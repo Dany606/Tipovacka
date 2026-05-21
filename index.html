@@ -384,12 +384,6 @@ async function renderMatches(){
       const stakeVal = myTip?.stake || 500;
 
       html += `<div class="tip-form">
-        <div class="tip-row-label">Vítěz zápasu</div>
-        <div class="odds-grid">
-          <button class="odd-btn ${sel==='home'?'sel':''}" onclick="selOpt('${m.id}','outcome','home',this)"><div class="ol">${m.home}</div><div class="ov">${parseFloat(m.odds_home).toFixed(2)}</div></button>
-          <button class="odd-btn ${sel==='draw'?'sel':''}" onclick="selOpt('${m.id}','outcome','draw',this)"><div class="ol">Remíza</div><div class="ov">${parseFloat(m.odds_draw).toFixed(2)}</div></button>
-          <button class="odd-btn ${sel==='away'?'sel':''}" onclick="selOpt('${m.id}','outcome','away',this)"><div class="ol">${m.away}</div><div class="ov">${parseFloat(m.odds_away).toFixed(2)}</div></button>
-        </div>
         <div class="tip-row-label">Výsledek základní hrací doby</div>
         <div class="odds-grid" style="margin-bottom:0.75rem">
           <button class="odd-btn ${sel==='home'?'sel':''}" onclick="selOpt('${m.id}','outcome','home',this)">
