@@ -390,35 +390,38 @@ async function renderMatches(){
           <button class="odd-btn ${sel==='draw'?'sel':''}" onclick="selOpt('${m.id}','outcome','draw',this)"><div class="ol">Remíza</div><div class="ov">${parseFloat(m.odds_draw).toFixed(2)}</div></button>
           <button class="odd-btn ${sel==='away'?'sel':''}" onclick="selOpt('${m.id}','outcome','away',this)"><div class="ol">${m.away}</div><div class="ov">${parseFloat(m.odds_away).toFixed(2)}</div></button>
         </div>
-        <div class="tip-row-label">Vítěz do rozhodnutí</div>
-        <div class="two-grid" style="margin-bottom:0.75rem">
-          <button class="odd-btn ${selDec==='reg'?'sel':''}" onclick="selOpt('${m.id}','decision','reg',this)">
-            <div class="ol">${m.home} (reg.čas)</div>
-            <div class="ov">${(parseFloat(m.odds_home)*0.75).toFixed(2)}</div>
+        <div class="tip-row-label">Výsledek základní hrací doby</div>
+        <div class="odds-grid" style="margin-bottom:0.75rem">
+          <button class="odd-btn ${sel==='home'?'sel':''}" onclick="selOpt('${m.id}','outcome','home',this)">
+            <div class="ol">${m.home}</div>
+            <div class="ov">${parseFloat(m.odds_home).toFixed(2)}</div>
           </button>
-          <button class="odd-btn ${selDec==='ot-home'?'sel':''}" onclick="selOpt('${m.id}','decision','ot-home',this)">
-            <div class="ol">${m.home} (prod./náj.)</div>
-            <div class="ov">${(parseFloat(m.odds_home)*1.4).toFixed(2)}</div>
+          <button class="odd-btn ${sel==='draw'?'sel':''}" onclick="selOpt('${m.id}','outcome','draw',this)">
+            <div class="ol">Remíza</div>
+            <div class="ov">${parseFloat(m.odds_draw).toFixed(2)}</div>
           </button>
-          <button class="odd-btn ${selDec==='ot-away'?'sel':''}" onclick="selOpt('${m.id}','decision','ot-away',this)">
-            <div class="ol">${m.away} (prod./náj.)</div>
-            <div class="ov">${(parseFloat(m.odds_away)*1.4).toFixed(2)}</div>
-          </button>
-          <button class="odd-btn ${selDec==='away-reg'?'sel':''}" onclick="selOpt('${m.id}','decision','away-reg',this)">
-            <div class="ol">${m.away} (reg.čas)</div>
-            <div class="ov">${(parseFloat(m.odds_away)*0.75).toFixed(2)}</div>
+          <button class="odd-btn ${sel==='away'?'sel':''}" onclick="selOpt('${m.id}','outcome','away',this)">
+            <div class="ol">${m.away}</div>
+            <div class="ov">${parseFloat(m.odds_away).toFixed(2)}</div>
           </button>
         </div>
 
-        <div class="tip-row-label" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center" onclick="toggleScores('${m.id}')">
-          <span>Přesný výsledek zápasu</span>
-          <span id="scoreToggle_${m.id}" style="font-size:11px;color:var(--blue)">▼ Zobrazit</span>
-        </div>
-        <div id="scoreTable_${m.id}" style="display:none;margin-bottom:0.75rem">
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:6px">
-            ${generateScoreOdds(m.id, parseFloat(m.odds_home), parseFloat(m.odds_away), myTip?.score_home, myTip?.score_away)}
-          </div>
-        </div>
+        <div class="tip-row-label">Vítěz včetně prodloužení / nájezdů</div>
+        <div class="two-grid" style="margin-bottom:0.75rem;display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          ${(() => {
+            const regOdds = m.regulation_odds || {};
+            const oh = regOdds.home || (parseFloat(m.odds_home)*0.92).toFixed(2);
+            const oa = regOdds.away || (parseFloat(m.odds_away)*0.92).toFixed(2);
+            return `
+          <button class="odd-btn ${selDec==='home'?'sel':''}" onclick="selOpt('${m.id}','decision','home',this)">
+            <div class="ol">${m.home}</div>
+            <div class="ov">${parseFloat(oh).toFixed(2)}</div>
+          </button>
+          <button class="odd-btn ${selDec==='away'?'sel':''}" onclick="selOpt('${m.id}','decision','away',this)">
+            <div class="ol">${m.away}</div>
+            <div class="ov">${parseFloat(oa).toFixed(2)}</div>
+          </button>`;
+          })()}
         <div class="stake-row">
           <label>Sázka</label>
           <input type="number" id="st_${m.id}" min="100" step="100" value="${stakeVal}" style="width:110px;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:15px;font-weight:600;text-align:right;font-family:'DM Sans',sans-serif;outline:none;background:#fafbfc" oninput="updatePotential('${m.id}')">
