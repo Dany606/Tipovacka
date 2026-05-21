@@ -390,19 +390,34 @@ async function renderMatches(){
           <button class="odd-btn ${sel==='draw'?'sel':''}" onclick="selOpt('${m.id}','outcome','draw',this)"><div class="ol">Remíza</div><div class="ov">${parseFloat(m.odds_draw).toFixed(2)}</div></button>
           <button class="odd-btn ${sel==='away'?'sel':''}" onclick="selOpt('${m.id}','outcome','away',this)"><div class="ol">${m.away}</div><div class="ov">${parseFloat(m.odds_away).toFixed(2)}</div></button>
         </div>
-        <div class="tip-row-label">Způsob rozhodnutí</div>
-        <div class="three-grid">
-          ${['reg','ot','so'].map(d=>`<button class="odd-btn ${selDec===d?'sel':''}" onclick="selOpt('${m.id}','decision','${d}',this)"><div class="ov" style="font-size:12px">${d==='reg'?'Reg. čas':d==='ot'?'Prodloužení':'Nájezdy'}</div></button>`).join('')}
+        <div class="tip-row-label">Vítěz do rozhodnutí</div>
+        <div class="two-grid" style="margin-bottom:0.75rem">
+          <button class="odd-btn ${selDec==='reg'?'sel':''}" onclick="selOpt('${m.id}','decision','reg',this)">
+            <div class="ol">${m.home} (reg.čas)</div>
+            <div class="ov">${(parseFloat(m.odds_home)*0.75).toFixed(2)}</div>
+          </button>
+          <button class="odd-btn ${selDec==='ot-home'?'sel':''}" onclick="selOpt('${m.id}','decision','ot-home',this)">
+            <div class="ol">${m.home} (prod./náj.)</div>
+            <div class="ov">${(parseFloat(m.odds_home)*1.4).toFixed(2)}</div>
+          </button>
+          <button class="odd-btn ${selDec==='ot-away'?'sel':''}" onclick="selOpt('${m.id}','decision','ot-away',this)">
+            <div class="ol">${m.away} (prod./náj.)</div>
+            <div class="ov">${(parseFloat(m.odds_away)*1.4).toFixed(2)}</div>
+          </button>
+          <button class="odd-btn ${selDec==='away-reg'?'sel':''}" onclick="selOpt('${m.id}','decision','away-reg',this)">
+            <div class="ol">${m.away} (reg.čas)</div>
+            <div class="ov">${(parseFloat(m.odds_away)*0.75).toFixed(2)}</div>
+          </button>
         </div>
-        <div class="tip-row-label">Celkový počet gólů</div>
-        <div class="five-grid">
-          ${[['under3','0–2'],['3','3'],['4','4'],['5','5'],['over5','6+']].map(([v,l])=>`<button class="odd-btn ${selGoals===v?'sel':''}" onclick="selOpt('${m.id}','goals','${v}',this)"><div class="ov" style="font-size:13px">${l}</div></button>`).join('')}
+
+        <div class="tip-row-label" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center" onclick="toggleScores('${m.id}')">
+          <span>Přesný výsledek zápasu</span>
+          <span id="scoreToggle_${m.id}" style="font-size:11px;color:var(--blue)">▼ Zobrazit</span>
         </div>
-        <div class="tip-row-label">Přesný výsledek</div>
-        <div class="score-row">
-          <input type="number" min="0" max="20" value="${myTip?.score_home??''}" placeholder="0" id="sh_${m.id}" style="width:56px;padding:8px 4px;border:1.5px solid var(--border);border-radius:8px;font-size:16px;font-weight:600;text-align:center;font-family:'DM Sans',sans-serif;outline:none;background:#fafbfc" oninput="updateScore('${m.id}')">
-          <span class="score-sep">:</span>
-          <input type="number" min="0" max="20" value="${myTip?.score_away??''}" placeholder="0" id="sa_${m.id}" style="width:56px;padding:8px 4px;border:1.5px solid var(--border);border-radius:8px;font-size:16px;font-weight:600;text-align:center;font-family:'DM Sans',sans-serif;outline:none;background:#fafbfc" oninput="updateScore('${m.id}')">
+        <div id="scoreTable_${m.id}" style="display:none;margin-bottom:0.75rem">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:6px">
+            ${generateScoreOdds(m.id, parseFloat(m.odds_home), parseFloat(m.odds_away), myTip?.score_home, myTip?.score_away)}
+          </div>
         </div>
         <div class="stake-row">
           <label>Sázka</label>
@@ -429,6 +444,57 @@ async function renderMatches(){
 
   el.innerHTML = html;
   allMatches.forEach(m=>{ if(m.status!=='done') updatePotential(m.id); });
+}
+
+function generateScoreOdds(mid, oddsHome, oddsAway, selH, selA){
+  // Generuje kurzy pro přesné výsledky na základě pravděpodobnosti
+  const scores = [
+    [1,0],[2,0],[3,0],[4,0],[5,0],
+    [2,1],[3,1],[4,1],[5,1],[3,2],[4,2],[5,2],[4,3],[5,3],
+    [0,0],[1,1],[2,2],[3,3],
+    [0,1],[0,2],[0,3],[0,4],[0,5],
+    [1,2],[1,3],[1,4],[1,5],[2,3],[2,4],[2,5],[3,4],[3,5]
+  ];
+  const homeProb = 1/oddsHome;
+  const awayProb = 1/oddsAway;
+  return scores.map(([h,a])=>{
+    // Odhadni kurz na základě pravděpodobnosti týmů a skóre
+    let base;
+    if(h>a) base = oddsHome * (h+a) * (h>3?2.5:h>2?1.8:1.3);
+    else if(a>h) base = oddsAway * (h+a) * (a>3?2.5:a>2?1.8:1.3);
+    else base = (oddsHome+oddsAway) * (h+1) * 2.5;
+    const odds = Math.min(Math.max(base, 1.5), 250).toFixed(2);
+    const isSel = selH===h && selA===a;
+    return `<button class="odd-btn ${isSel?'sel':''}" style="padding:6px 2px" onclick="selectScore('${mid}',${h},${a},this)">
+      <div class="ol" style="font-size:11px">${h}:${a}</div>
+      <div class="ov" style="font-size:12px">${odds}</div>
+    </button>`;
+  }).join('');
+}
+
+function toggleScores(mid){
+  const el = document.getElementById('scoreTable_'+mid);
+  const toggle = document.getElementById('scoreToggle_'+mid);
+  if(el.style.display==='none'){
+    el.style.display='block';
+    toggle.textContent='▲ Skrýt';
+  } else {
+    el.style.display='none';
+    toggle.textContent='▼ Zobrazit';
+  }
+}
+
+function selectScore(mid, h, a, btn){
+  if(!pending[mid]) pending[mid]={};
+  pending[mid].scoreH = h;
+  pending[mid].scoreA = a;
+  // Automaticky nastav výsledek zápasu
+  if(h>a && !pending[mid].outcome) pending[mid].outcome='home';
+  if(a>h && !pending[mid].outcome) pending[mid].outcome='away';
+  if(h===a && !pending[mid].outcome) pending[mid].outcome='draw';
+  document.getElementById('scoreTable_'+mid).querySelectorAll('.odd-btn').forEach(b=>b.classList.remove('sel'));
+  btn.classList.add('sel');
+  updatePotential(mid);
 }
 
 function selOpt(mid, key, val, btn){
@@ -586,15 +652,22 @@ async function renderAdmin(){
 
   let html = `
   <div class="admin-card">
+    <h3>🏒 NHL Playoff 2026 – Auto sync</h3>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:1rem">Automaticky načte aktuální zápasy NHL playoffs včetně výsledků a přidá je do aktivní soutěže.</p>
+    <button class="btn-admin btn-success" onclick="syncNHL()" style="width:100%" id="syncBtn">⬇️ Synchronizovat NHL zápasy</button>
+    <div id="syncStatus" style="font-size:13px;margin-top:8px;color:var(--text2)"></div>
+  </div>
+
+  <div class="admin-card">
     <h3>Nová soutěž</h3>
-    <div class="field"><label>Název</label><input type="text" id="compName" placeholder="např. Extraliga říjen 2026"></div>
+    <div class="field"><label>Název</label><input type="text" id="compName" placeholder="např. NHL Playoff 2026"></div>
     <div class="field"><label>Liga</label>
       <select id="compLeague">
         <option value="extraliga">Česká extraliga</option>
         <option value="nhl">NHL</option>
       </select>
     </div>
-    <div class="field"><label>Sezóna</label><input type="text" id="compSeason" placeholder="2026/27"></div>
+    <div class="field"><label>Sezóna</label><input type="text" id="compSeason" placeholder="2025/26"></div>
     <button class="btn-admin btn-success" onclick="createComp()" style="width:100%">Vytvořit soutěž</button>
   </div>
 
@@ -616,7 +689,7 @@ async function renderAdmin(){
   if(currentComp){
     html += `
     <div class="admin-card">
-      <h3>Přidat zápas do: ${currentComp.name}</h3>
+      <h3>Přidat zápas ručně do: ${currentComp.name}</h3>
       <div class="field"><label>Domácí tým</label><input type="text" id="mHome" placeholder="Sparta Praha"></div>
       <div class="field"><label>Hostující tým</label><input type="text" id="mAway" placeholder="Kometa Brno"></div>
       <div class="field"><label>Datum a čas</label><input type="text" id="mDate" placeholder="20.5.2026 18:00"></div>
@@ -626,15 +699,16 @@ async function renderAdmin(){
       <button class="btn-admin btn-success" onclick="addMatch()" style="width:100%">Přidat zápas</button>
     </div>`;
 
-    if(matches&&matches.length>0){
-      html += `<div class="admin-card"><h3>Zadat výsledek</h3>`;
-      matches.filter(m=>m.status!=='done').forEach(m=>{
+    const pendingMatches = matches ? matches.filter(m=>m.status!=='done') : [];
+    if(pendingMatches.length>0){
+      html += `<div class="admin-card"><h3>Zadat výsledek ručně</h3>`;
+      pendingMatches.forEach(m=>{
         html += `<div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
           <div style="font-weight:600;margin-bottom:6px">${m.home} – ${m.away} <span style="font-size:12px;color:var(--text2)">${m.match_date}</span></div>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-            <input type="number" id="rh_${m.id}" placeholder="Domácí" min="0" style="width:70px;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-family:'DM Sans',sans-serif;font-size:14px;outline:none">
+            <input type="number" id="rh_${m.id}" placeholder="Dom." min="0" style="width:60px;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-family:'DM Sans',sans-serif;font-size:14px;outline:none">
             <span>:</span>
-            <input type="number" id="ra_${m.id}" placeholder="Hosté" min="0" style="width:70px;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-family:'DM Sans',sans-serif;font-size:14px;outline:none">
+            <input type="number" id="ra_${m.id}" placeholder="Host." min="0" style="width:60px;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-family:'DM Sans',sans-serif;font-size:14px;outline:none">
             <select id="rd_${m.id}" style="width:auto;margin:0;padding:6px;font-size:13px">
               <option value="reg">Reg. čas</option>
               <option value="ot">Prodloužení</option>
@@ -649,6 +723,104 @@ async function renderAdmin(){
   }
 
   el.innerHTML = html;
+}
+
+// ── NHL AUTO SYNC ─────────────────────────────────
+async function syncNHL(){
+  if(!currentComp){ alert('Nejprve vytvoř aktivní soutěž!'); return; }
+  const btn = document.getElementById('syncBtn');
+  const status = document.getElementById('syncStatus');
+  btn.disabled = true;
+  btn.textContent = '⏳ Načítám data...';
+  status.textContent = '';
+
+  try {
+    // Načíst aktuální zápasy z NHL API přes Claude
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': 'VLOZ_SVU_ANTHROPIC_API_KEY',
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2000,
+        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+        messages: [{
+          role: 'user',
+          content: `Najdi aktuální NHL playoff 2026 zápasy - nadcházející i nedávno odehrané (posledních 7 dní). Pro každý zápas odhadni kurzy jako by byly od Tipsportu.
+
+Odpověz POUZE validním JSON polem, bez textu před ani po:
+[
+  {
+    "home": "Colorado Avalanche",
+    "away": "Vegas Golden Knights", 
+    "date": "21.5.2026 02:00",
+    "status": "done",
+    "result_home": 2,
+    "result_away": 4,
+    "decision": "reg",
+    "odds_home": 1.85,
+    "odds_draw": 4.50,
+    "odds_away": 2.10
+  }
+]
+
+Zahrň pouze zápasy z posledních 7 dní a nadcházející. Status: "done" pro odehrané, "upcoming" pro budoucí. Decision: "reg", "ot", nebo "so" (jen pro odehrané).`
+        }]
+      })
+    });
+
+    const data = await response.json();
+    const text = data.content.filter(c=>c.type==='text').map(c=>c.text).join('');
+    const clean = text.replace(/```json|```/g,'').trim();
+    const games = JSON.parse(clean);
+
+    // Získat existující zápasy
+    const {data:existing} = await sb.from('matches').select('home,away,match_date').eq('competition_id', currentComp.id);
+    const existingKeys = new Set((existing||[]).map(m=>`${m.home}-${m.away}`));
+
+    let added = 0, updated = 0;
+    for(const g of games){
+      const key = `${g.home}-${g.away}`;
+      if(existingKeys.has(key)){
+        // Aktualizuj výsledek pokud je zápas hotový
+        if(g.status==='done'){
+          await sb.from('matches')
+            .update({status:'done', result_home:g.result_home, result_away:g.result_away, decision:g.decision})
+            .eq('competition_id', currentComp.id)
+            .eq('home', g.home).eq('away', g.away);
+          updated++;
+        }
+      } else {
+        // Přidej nový zápas
+        await sb.from('matches').insert({
+          competition_id: currentComp.id,
+          home: g.home, away: g.away,
+          match_date: g.date,
+          status: g.status,
+          result_home: g.result_home || null,
+          result_away: g.result_away || null,
+          decision: g.decision || null,
+          odds_home: g.odds_home,
+          odds_draw: g.odds_draw,
+          odds_away: g.odds_away
+        });
+        added++;
+      }
+    }
+
+    status.innerHTML = `<span style="color:var(--green)">✓ Přidáno ${added} nových zápasů, aktualizováno ${updated} výsledků.</span>`;
+    await renderMatches();
+    await renderAdmin();
+  } catch(err) {
+    status.innerHTML = `<span style="color:var(--red)">Chyba: ${err.message}. Nastav Anthropic API klíč v kódu.</span>`;
+    console.error(err);
+  }
+  btn.disabled = false;
+  btn.textContent = '⬇️ Synchronizovat NHL zápasy';
 }
 
 async function createComp(){
