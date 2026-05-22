@@ -8,25 +8,34 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root {
-  --navy:#0a1628;--navy2:#112240;--blue:#1a56db;--blue2:#1e40af;
+  --navy:#0a1628;--navy2:#112240;--navy3:#0d1f3c;--blue:#1a56db;--blue2:#1e40af;
   --gold:#f59e0b;--red:#dc2626;--green:#16a34a;
   --text:#0f172a;--text2:#475569;--border:rgba(10,22,40,0.12);
   --card:#fff;--bg:#f0f4f8;--radius:12px;--shadow:0 2px 12px rgba(10,22,40,0.10);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
-.hero{background:var(--navy);padding:1.5rem 1.25rem 1rem;text-align:center;position:relative;overflow:hidden}
-.hero::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent,transparent 38px,rgba(255,255,255,0.03) 38px,rgba(255,255,255,0.03) 40px),repeating-linear-gradient(0deg,transparent,transparent 38px,rgba(255,255,255,0.03) 38px,rgba(255,255,255,0.03) 40px)}
-.hero-title{font-family:'Bebas Neue',sans-serif;font-size:clamp(2.4rem,7vw,3.6rem);letter-spacing:2px;color:#fff;position:relative;line-height:1}
+/* TICKER */
+.ticker-wrap{background:#c7041c;overflow:hidden;white-space:nowrap;padding:7px 0;border-bottom:2px solid #a30016}
+.ticker-inner{display:inline-flex;animation:ticker 35s linear infinite}
+.ticker-inner:hover{animation-play-state:paused}
+@keyframes ticker{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+.ticker-item{display:inline-flex;align-items:center;gap:6px;margin:0 2.5rem;font-size:12px;font-weight:600;color:#fff;letter-spacing:0.3px;white-space:nowrap}
+.ticker-item .lbl{color:rgba(255,255,255,0.65);font-weight:400}
+.ticker-sep{color:rgba(255,255,255,0.3);font-size:16px;margin:0 0.5rem}
+/* HERO */
+.hero{background:linear-gradient(135deg,#0a1628 0%,#0d1f3c 60%,#0a1628 100%);padding:1rem 1.25rem 0.75rem;text-align:center;position:relative;overflow:hidden}
+.hero::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent,transparent 38px,rgba(255,255,255,0.02) 38px,rgba(255,255,255,0.02) 40px)}
+.hero-title{font-family:'Bebas Neue',sans-serif;font-size:clamp(2rem,6vw,2.8rem);letter-spacing:3px;color:#fff;position:relative;line-height:1}
 .hero-title span{color:var(--gold)}
-.hero-sub{font-size:13px;color:rgba(255,255,255,0.55);letter-spacing:3px;text-transform:uppercase;margin-top:4px;position:relative}
+.hero-sub{font-size:11px;color:rgba(255,255,255,0.4);letter-spacing:3px;text-transform:uppercase;margin-top:3px;position:relative}
 .topbar{background:var(--navy2);border-bottom:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between;padding:0.65rem 1.25rem}
 .topbar-user{font-size:14px;font-weight:500;color:#fff}
 .topbar-credits{background:rgba(245,158,11,0.18);color:var(--gold);font-size:13px;font-weight:600;padding:4px 14px;border-radius:999px;border:1px solid rgba(245,158,11,0.3)}
 .logout-btn{background:none;border:none;color:rgba(255,255,255,0.45);cursor:pointer;font-size:18px;padding:2px 6px}
 .logout-btn:hover{color:#fff}
 .nav{background:var(--navy);display:flex;border-bottom:1px solid rgba(255,255,255,0.08)}
-.nav-btn{flex:1;padding:12px 8px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:rgba(255,255,255,0.5);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;transition:all 0.15s}
+.nav-btn{flex:1;padding:11px 6px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;color:rgba(255,255,255,0.5);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;transition:all 0.15s}
 .nav-btn.active{color:var(--gold);border-bottom-color:var(--gold)}
 .screen{display:none}.screen.active{display:block}
 .auth-wrap{max-width:400px;margin:2rem auto;padding:0 1rem}
@@ -43,6 +52,14 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .auth-switch{text-align:center;margin-top:1.25rem}
 .auth-switch button{font-size:13px;color:var(--blue);background:none;border:none;cursor:pointer;text-decoration:underline}
 .content{padding:1rem 1rem 3rem;max-width:680px;margin:0 auto}
+/* RULES */
+.rules-card{background:linear-gradient(135deg,var(--navy) 0%,var(--navy3) 100%);border-radius:var(--radius);padding:0.9rem 1.1rem;margin-bottom:1rem;border:1px solid rgba(255,255,255,0.08)}
+.rules-title{font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:1px;color:var(--gold);margin-bottom:0.5rem}
+.rules-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:0.5rem}
+.rule-pill{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:5px 10px;font-size:12px;color:rgba(255,255,255,0.75)}
+.rule-pill strong{color:var(--gold)}
+.rules-scoring{font-size:11.5px;color:rgba(255,255,255,0.55);line-height:1.7;margin-top:4px}
+.rules-scoring b{color:rgba(255,255,255,0.8)}
 .info-banner{background:linear-gradient(135deg,var(--navy) 0%,var(--navy2) 100%);border-radius:var(--radius);padding:0.85rem 1.1rem;display:flex;align-items:center;gap:10px;margin-bottom:1rem}
 .info-banner span{font-size:13px;color:rgba(255,255,255,0.7)}
 .info-banner strong{color:var(--gold)}
@@ -112,6 +129,13 @@ select:focus,textarea:focus{border-color:var(--blue)}
 </head>
 <body>
 
+<!-- TICKER -->
+<div id="tickerWrap" class="ticker-wrap" style="display:none">
+  <div class="ticker-inner" id="tickerInner">
+    <span class="ticker-item"><span class="lbl">Načítám...</span></span>
+  </div>
+</div>
+
 <!-- HERO -->
 <div class="hero">
   <div style="font-size:28px;position:relative;margin-bottom:4px">🏒</div>
@@ -170,6 +194,19 @@ select:focus,textarea:focus{border-color:var(--blue)}
   </div>
 
   <div id="tab-matches" class="content">
+    <div class="rules-card">
+      <div class="rules-title">📋 Pravidla tipovačky</div>
+      <div class="rules-grid">
+        <div class="rule-pill">💰 Start: <strong>10 000 kr</strong></div>
+        <div class="rule-pill">⬇️ Min sázka: <strong>100 kr</strong></div>
+        <div class="rule-pill">🏆 Vyhrává: <strong>nejvíc kreditů</strong></div>
+        <div class="rule-pill">🚫 Bankrot: <strong>0 kr = konec</strong></div>
+      </div>
+      <div class="rules-scoring">
+        <b>Výsledek základní doby (1X2)</b> — výhra = sázka × kurz &nbsp;|&nbsp;
+        <b>Vítěz vč. prod./náj.</b> — výhra = sázka × kurz vítěze
+      </div>
+    </div>
     <div id="matchList"><div class="loading-msg"><div class="spinner"></div><br>Načítám zápasy...</div></div>
   </div>
   <div id="tab-mytips" class="content" style="display:none">
@@ -248,6 +285,43 @@ function doLogout(){
 }
 
 // ── MAIN ─────────────────────────────────────────
+async function loadTicker(){
+  try {
+    const {data:allUsers} = await sb.from('users').select('*');
+    const {data:allTips} = await sb.from('tips').select('*').eq('settled', true).gt('winnings', 0);
+    const {data:matches} = await sb.from('matches').select('*').eq('status','done');
+
+    if(!allTips||allTips.length===0) return;
+
+    // Největší výhra
+    const bigWin = allTips.reduce((a,b)=>b.winnings>a.winnings?b:a, allTips[0]);
+    const bigWinUser = allUsers?.find(u=>u.id===bigWin.user_id);
+    const bigWinMatch = matches?.find(m=>m.id===bigWin.match_id);
+
+    // Lídr žebříčku
+    const sorted = (allUsers||[]).sort((a,b)=>b.credits-a.credits);
+    const leader = sorted[0];
+
+    // Počet tipů celkem
+    const {data:allTipsCount} = await sb.from('tips').select('id');
+    const totalTips = allTipsCount?.length || 0;
+
+    const items = [
+      `<span class="ticker-item">🏆 <span class="lbl">Lídr:</span> ${leader?.username || '–'} · ${leader?.credits?.toLocaleString('cs-CZ')} kr</span>`,
+      `<span class="ticker-sep">|</span>`,
+      bigWinMatch ? `<span class="ticker-item">💰 <span class="lbl">Největší výhra:</span> ${bigWinUser?.username || '–'} +${bigWin.winnings.toLocaleString('cs-CZ')} kr (${bigWinMatch.home} – ${bigWinMatch.away})</span>` : '',
+      `<span class="ticker-sep">|</span>`,
+      `<span class="ticker-item">🎫 <span class="lbl">Celkem tipů:</span> ${totalTips}</span>`,
+      `<span class="ticker-sep">|</span>`,
+      sorted.slice(0,3).map((u,i)=>`<span class="ticker-item">${['🥇','🥈','🥉'][i]} ${u.username} · ${u.credits.toLocaleString('cs-CZ')} kr</span>`).join('<span class="ticker-sep">|</span>'),
+    ].filter(Boolean).join('');
+
+    const doubled = items + items; // duplikovat pro plynulý loop
+    document.getElementById('tickerInner').innerHTML = doubled;
+    document.getElementById('tickerWrap').style.display = 'block';
+  } catch(e){ console.warn('Ticker error:', e); }
+}
+
 async function openMain(){
   document.getElementById('loginScreen').className='screen';
   document.getElementById('registerScreen').className='screen';
@@ -261,6 +335,7 @@ async function openMain(){
   await loadActiveComp();
   await settleWinnings();
   updateCreditsDisplay();
+  loadTicker();
   await renderMatches();
 }
 
