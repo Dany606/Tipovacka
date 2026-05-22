@@ -17,13 +17,17 @@
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
-.ticker{background:#b91c1c;overflow:hidden;padding:7px 0;border-bottom:1px solid #991b1b}
-.ticker-track{display:inline-flex;animation:tick 40s linear infinite;white-space:nowrap}
+.ticker{background:#161b22;border-bottom:1px solid var(--border);overflow:hidden;padding:7px 0}
+.ticker-track{display:inline-flex;animation:tick 45s linear infinite;white-space:nowrap}
 .ticker-track:hover{animation-play-state:paused}
 @keyframes tick{from{transform:translateX(0)}to{transform:translateX(-50%)}}
-.t-item{display:inline-flex;align-items:center;gap:5px;margin:0 28px;font-size:12px;font-weight:600;color:#fff;white-space:nowrap}
-.t-item .lbl{color:rgba(255,255,255,0.6);font-weight:400}
-.t-div{color:rgba(255,255,255,0.25);margin:0 8px}
+.t-item{display:inline-flex;align-items:center;gap:5px;margin:0 24px;font-size:12px;font-weight:500;color:var(--text2);white-space:nowrap}
+.t-item .lbl{color:var(--text3);font-weight:400}
+.t-item strong{color:var(--text);font-weight:600}
+.t-item .hi{color:var(--gold);font-weight:700}
+.t-item .pos{color:var(--green);font-weight:700}
+.t-item .neg{color:var(--red);font-weight:700}
+.t-div{color:var(--border2);margin:0 6px;font-size:10px}
 .site-header{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 1rem}
 .header-inner{max-width:900px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;height:54px}
 .site-logo{font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:2px;color:var(--text)}
@@ -127,10 +131,6 @@ select:focus{border-color:var(--blue)}
 </head>
 <body>
 
-<div class="ticker" id="tickerBar" style="display:none">
-  <div class="ticker-track" id="tickerTrack"><span class="t-item">Načítám...</span></div>
-</div>
-
 <div id="loginScreen" class="screen active">
   <div class="auth-page">
     <div class="auth-logo">🏒 <span>Tipovačka</span></div>
@@ -183,6 +183,9 @@ select:focus{border-color:var(--blue)}
       <button class="nav-btn" onclick="switchTab('leaderboard',this)">🏆 Žebříček</button>
       <button class="nav-btn" id="adminNavBtn" style="display:none" onclick="switchTab('admin',this)">⚙️ Admin</button>
     </div>
+  </div>
+  <div class="ticker" id="tickerBar" style="display:none">
+    <div class="ticker-track" id="tickerTrack"><span class="t-item">Načítám...</span></div>
   </div>
   <div id="tab-matches" class="page">
     <div class="rules-box">
@@ -279,20 +282,52 @@ async function loadTicker(){
   try{
     const{data:users}=await sb.from('users').select('*');
     const{data:wonTips}=await sb.from('tips').select('*').eq('settled',true).gt('winnings',0);
+    const{data:lostTips}=await sb.from('tips').select('*').eq('settled',true).eq('winnings',0);
     const{data:doneMatches}=await sb.from('matches').select('*').eq('status','done');
-    const{data:allT}=await sb.from('tips').select('id');
     const sorted=(users||[]).sort((a,b)=>b.credits-a.credits);
     const leader=sorted[0];
+    const second=sorted[1];
+
+    // Největší výhra
     let bigWin=null,bigWinUser=null,bigWinMatch=null;
     if(wonTips&&wonTips.length>0){
       bigWin=wonTips.reduce((a,b)=>b.winnings>a.winnings?b:a,wonTips[0]);
       bigWinUser=(users||[]).find(u=>u.id===bigWin.user_id);
       bigWinMatch=(doneMatches||[]).find(m=>m.id===bigWin.match_id);
     }
-    const podium=sorted.slice(0,3).map((u,i)=>`<span class="t-item">${['🥇','🥈','🥉'][i]} ${u.username} · ${u.credits.toLocaleString('cs-CZ')} kr</span><span class="t-div">|</span>`).join('');
-    let items=`<span class="t-item">🏆 <span class="lbl">Lídr:</span> ${leader?.username||'–'} · ${(leader?.credits||0).toLocaleString('cs-CZ')} kr</span><span class="t-div">|</span>`;
-    if(bigWin&&bigWinMatch)items+=`<span class="t-item">💰 <span class="lbl">Největší výhra:</span> ${bigWinUser?.username||'–'} +${bigWin.winnings.toLocaleString('cs-CZ')} kr</span><span class="t-div">|</span>`;
-    items+=`<span class="t-item">🎫 <span class="lbl">Tipů celkem:</span> ${allT?.length||0}</span><span class="t-div">|</span>${podium}`;
+
+    // Největší trefený kurz (výhra / sázka + 1)
+    let bigOdds=null,bigOddsUser=null,bigOddsMatch=null;
+    if(wonTips&&wonTips.length>0){
+      const withOdds=wonTips.map(t=>({...t,odds:t.stake>0?(t.winnings+t.stake)/t.stake:0}));
+      const top=withOdds.reduce((a,b)=>b.odds>a.odds?b:a,withOdds[0]);
+      if(top.odds>1.5){
+        bigOdds=top;
+        bigOddsUser=(users||[]).find(u=>u.id===top.user_id);
+        bigOddsMatch=(doneMatches||[]).find(m=>m.id===top.match_id);
+      }
+    }
+
+    // Největší prohra
+    let bigLoss=null,bigLossUser=null;
+    if(lostTips&&lostTips.length>0){
+      bigLoss=lostTips.reduce((a,b)=>b.stake>a.stake?b:a,lostTips[0]);
+      bigLossUser=(users||[]).find(u=>u.id===bigLoss.user_id);
+    }
+
+    let items='';
+    // Lídr
+    if(leader) items+=`<span class="t-item">🏆 <span class="lbl">Lídr:</span> <strong>${leader.username}</strong> · <span class="hi">${leader.credits.toLocaleString('cs-CZ')} kr</span></span><span class="t-div">·</span>`;
+    // 2. místo
+    if(second) items+=`<span class="t-item">🥈 <strong>${second.username}</strong> · ${second.credits.toLocaleString('cs-CZ')} kr</span><span class="t-div">·</span>`;
+    // Největší výhra
+    if(bigWin&&bigWinMatch) items+=`<span class="t-item">💰 <span class="lbl">Největší výhra:</span> <strong>${bigWinUser?.username||'–'}</strong> <span class="pos">+${bigWin.winnings.toLocaleString('cs-CZ')} kr</span> (${bigWinMatch.home} – ${bigWinMatch.away})</span><span class="t-div">·</span>`;
+    // Největší kurz
+    if(bigOdds&&bigOddsMatch) items+=`<span class="t-item">🎯 <span class="lbl">Největší kurz:</span> <strong>${bigOddsUser?.username||'–'}</strong> <span class="hi">${bigOdds.odds.toFixed(2)}×</span> (${bigOddsMatch.home} – ${bigOddsMatch.away})</span><span class="t-div">·</span>`;
+    // Největší prohra
+    if(bigLoss&&bigLoss.stake>500) items+=`<span class="t-item">📉 <span class="lbl">Největší prohra:</span> <strong>${bigLossUser?.username||'–'}</strong> <span class="neg">−${bigLoss.stake.toLocaleString('cs-CZ')} kr</span></span><span class="t-div">·</span>`;
+
+    if(!items) return;
     document.getElementById('tickerTrack').innerHTML=items+items;
     document.getElementById('tickerBar').style.display='block';
   }catch(e){console.warn('ticker:',e);}
