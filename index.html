@@ -319,29 +319,34 @@ function evaluateTip(match, tip){
   if(match.result_home === null || match.result_home === undefined) return null;
   if(match.result_away === null || match.result_away === undefined) return null;
   const rh = match.result_home, ra = match.result_away;
-  const actual = rh>ra ? 'home' : rh<ra ? 'away' : 'draw';
+  const actualOutcome = rh>ra ? 'home' : rh<ra ? 'away' : 'draw';
+  const actualWinner = rh>ra ? 'home' : 'away'; // vítěz bez remízy
 
-  let outcome = tip.outcome;
-  if(!outcome) return null;
-  if(outcome !== actual) return 0;
-
-  const odds = outcome==='home' ? parseFloat(match.odds_home) : outcome==='away' ? parseFloat(match.odds_away) : parseFloat(match.odds_draw);
-  if(!odds||odds<=1) return tip.stake * 0.2;
-  let mult = odds;
-
-  // Bonus za správný vítěz včetně prodloužení
-  if(tip.decision){
-    const actualWinner = rh>ra ? 'home' : 'away';
-    if(tip.decision === actualWinner){
-      const regOdds = match.regulation_odds || {};
-      const decOdds = tip.decision==='home' ? parseFloat(regOdds.home) : parseFloat(regOdds.away);
-      if(decOdds > 1) return tip.stake * (decOdds - 1);
-    } else {
-      return 0;
-    }
+  // Pokud hráč tipoval jen vítěze včetně prodloužení
+  if(!tip.outcome && tip.decision){
+    if(tip.decision !== actualWinner) return 0; // prohra
+    const regOdds = match.regulation_odds || {};
+    const decOdds = tip.decision==='home' ? parseFloat(regOdds.home) : parseFloat(regOdds.away);
+    if(decOdds > 1) return Math.round(tip.stake * (decOdds - 1));
+    return Math.round(tip.stake * 0.5);
   }
 
-  return tip.stake * (mult - 1);
+  // Standardní vyhodnocení přes outcome
+  if(!tip.outcome) return null;
+  if(tip.outcome !== actualOutcome) return 0;
+
+  const odds = tip.outcome==='home' ? parseFloat(match.odds_home) : tip.outcome==='away' ? parseFloat(match.odds_away) : parseFloat(match.odds_draw);
+  if(!odds||odds<=1) return Math.round(tip.stake * 0.2);
+  let winnings = Math.round(tip.stake * (odds - 1));
+
+  // Bonus za správný vítěz včetně prodloužení
+  if(tip.decision && tip.decision === actualWinner){
+    const regOdds = match.regulation_odds || {};
+    const decOdds = tip.decision==='home' ? parseFloat(regOdds.home) : parseFloat(regOdds.away);
+    if(decOdds > 1) winnings = Math.round(tip.stake * (decOdds - 1));
+  }
+
+  return winnings;
 }
 
 // ── RENDER MATCHES ────────────────────────────────
