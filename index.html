@@ -302,7 +302,7 @@ async function settleWinnings(){
     const match = matches.find(m=>m.id===tip.match_id);
     if(!match) continue;
     const result = evaluateTip(match, tip);
-    if(result === null) continue;
+    if(result === null) continue; // zápas ještě nemá výsledek
     const winnings = result > 0 ? Math.round(result) : 0;
     totalWon += winnings;
     await sb.from('tips').update({settled:true, winnings}).eq('id', tip.id);
@@ -316,26 +316,31 @@ async function settleWinnings(){
 
 // ── EVALUATE ─────────────────────────────────────
 function evaluateTip(match, tip){
-  if(!match.result_home === null || match.result_home === undefined) return null;
-  if(match.result_home === null) return null;
+  if(match.result_home === null || match.result_home === undefined) return null;
+  if(match.result_away === null || match.result_away === undefined) return null;
   const rh = match.result_home, ra = match.result_away;
   const actual = rh>ra ? 'home' : rh<ra ? 'away' : 'draw';
 
   let outcome = tip.outcome;
-  if(!outcome && tip.score_home!==null && tip.score_away!==null){
-    outcome = tip.score_home>tip.score_away ? 'home' : tip.score_home<tip.score_away ? 'away' : 'draw';
-  }
   if(!outcome) return null;
   if(outcome !== actual) return 0;
 
-  const odds = outcome==='home' ? match.odds_home : outcome==='away' ? match.odds_away : match.odds_draw;
+  const odds = outcome==='home' ? parseFloat(match.odds_home) : outcome==='away' ? parseFloat(match.odds_away) : parseFloat(match.odds_draw);
   if(!odds||odds<=1) return tip.stake * 0.2;
   let mult = odds;
-  if(tip.decision && tip.decision === match.decision) mult *= 1.3;
-  const tot = rh + ra;
-  const gmap = {'under3':tot<=2,'3':tot===3,'4':tot===4,'5':tot===5,'over5':tot>=6};
-  if(tip.goals && gmap[tip.goals]) mult *= 1.2;
-  if(tip.score_home===rh && tip.score_away===ra) mult *= 2.5;
+
+  // Bonus za správný vítěz včetně prodloužení
+  if(tip.decision){
+    const actualWinner = rh>ra ? 'home' : 'away';
+    if(tip.decision === actualWinner){
+      const regOdds = match.regulation_odds || {};
+      const decOdds = tip.decision==='home' ? parseFloat(regOdds.home) : parseFloat(regOdds.away);
+      if(decOdds > 1) return tip.stake * (decOdds - 1);
+    } else {
+      return 0;
+    }
+  }
+
   return tip.stake * (mult - 1);
 }
 
