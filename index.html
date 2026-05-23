@@ -523,23 +523,43 @@ async function renderLeaderboard(){
   const el=document.getElementById('leaderboardContent');
   el.innerHTML='<div class="loading"><div class="spin"></div><br>Načítám...</div>';
   const{data:users}=await sb.from('users').select('*');
-  const{data:matches}=currentComp?await sb.from('matches').select('*').eq('competition_id',currentComp.id):{data:[]};
   const{data:tips}=await sb.from('tips').select('*');
+  const START_CREDITS=10000; // počáteční kredity každého hráče
   const ranked=(users||[]).map(u=>{
     const mt=(tips||[]).filter(t=>t.user_id===u.id);
     const settled=mt.filter(t=>t.settled);
-    const totalStaked=settled.reduce((s,t)=>s+(t.stake||0),0);
-    const totalWon=settled.reduce((s,t)=>s+(t.winnings||0),0);
-    const roi=totalStaked>0?((totalWon-totalStaked)/totalStaked*100):0;
-    return{name:u.username,credits:u.credits,total:u.credits,tipCount:mt.length,roi,totalStaked,totalWon};
-  }).sort((a,b)=>b.total-a.total);
+    const wins=settled.filter(t=>t.winnings>0).length;
+    const losses=settled.filter(t=>t.winnings===0).length;
+    // ROI = (aktuální kredity - počáteční kredity) / počáteční kredity * 100
+    const roi=((u.credits-START_CREDITS)/START_CREDITS*100);
+    const profit=u.credits-START_CREDITS;
+    return{name:u.username,credits:u.credits,tipCount:mt.length,settledCount:settled.length,wins,losses,roi,profit};
+  }).sort((a,b)=>b.credits-a.credits);
   const medals=['🥇','🥈','🥉'];
-  let html='<div class="sec-title">Celkové pořadí</div><div class="lb-table">';
+  let html=`<div class="sec-title">Celkové pořadí</div><div class="lb-table">
+    <div class="lb-thead">
+      <span></span>
+      <span>Hráč</span>
+      <span style="text-align:center">Tipy</span>
+      <span style="text-align:right">Kredity</span>
+      <span style="text-align:right">Profit</span>
+      <span style="text-align:right">ROI</span>
+    </div>`;
   ranked.forEach((p,i)=>{
     const isMe=p.name===currentUser.username;
-    const roiColor=p.roi>0?'var(--green)':p.roi<0?'var(--red)':'var(--text3)';
+    const roiCls=p.roi>0?'pos':p.roi<0?'neg':'zero';
     const roiStr=p.roi>0?'+'+p.roi.toFixed(1)+'%':p.roi.toFixed(1)+'%';
-    html+=`<div class="lb-row ${isMe?'me':''}"><div class="lb-rank">${medals[i]||i+1}</div><div class="lb-name">${p.name}${isMe?'<span class="lb-me">ty</span>':''}</div><div style="font-size:12px;color:${roiColor};font-weight:600;margin-right:12px">ROI ${roiStr}</div><div class="lb-creds">${Math.round(p.total).toLocaleString('cs-CZ')} kr</div><div class="lb-tips">${p.tipCount} tipů</div></div>`;
+    const profitStr=p.profit>0?'+'+p.profit.toLocaleString('cs-CZ'):p.profit.toLocaleString('cs-CZ');
+    const profitColor=p.profit>0?'var(--green)':p.profit<0?'var(--red)':'var(--text3)';
+    const credColor=p.credits>0?'var(--green)':'var(--red)';
+    html+=`<div class="lb-row ${isMe?'me':''}">
+      <div class="lb-rank">${medals[i]||i+1}</div>
+      <div class="lb-name">${p.name}${isMe?'<span class="lb-me">ty</span>':''}</div>
+      <div class="lb-tips">${p.tipCount}${p.settledCount<p.tipCount?'<span style="font-size:10px;color:var(--gold);margin-left:4px">'+(p.tipCount-p.settledCount)+' čeká</span>':''}</div>
+      <div class="lb-creds" style="color:${credColor}">${p.credits.toLocaleString('cs-CZ')} kr</div>
+      <div style="font-size:13px;font-weight:600;color:${profitColor};text-align:right">${profitStr} kr</div>
+      <div class="lb-roi ${roiCls}">${roiStr}</div>
+    </div>`;
   });
   html+='</div>';
   el.innerHTML=html;
