@@ -555,7 +555,7 @@ async function renderLeaderboard(){
     <div class="lb-thead">
       <span></span>
       <span>Hráč</span>
-      <span style="text-align:center">Tipy</span>
+      <span style="text-align:right">Tipy</span>
       <span style="text-align:right">Kredity</span>
       <span style="text-align:right">ROI</span>
     </div>`;
@@ -567,8 +567,8 @@ async function renderLeaderboard(){
     html+=`<div class="lb-row ${isMe?'me':''}">
       <div class="lb-rank">${medals[i]||i+1}</div>
       <div class="lb-name">${p.name}${isMe?'<span class="lb-me">ty</span>':''}</div>
-      <div class="lb-tips">${p.tipCount}${p.settledCount<p.tipCount?'<span style="font-size:10px;color:var(--gold);margin-left:4px">'+(p.tipCount-p.settledCount)+' čeká</span>':''}</div>
-      <div class="lb-creds" style="color:${credColor};text-align:right">${p.credits.toLocaleString('cs-CZ')} kr</div>
+      <div class="lb-tips">${p.tipCount}${p.settledCount<p.tipCount?' <span style="font-size:10px;color:var(--gold);">('+( p.tipCount-p.settledCount)+' čeká)</span>':''}</div>
+      <div class="lb-creds" style="color:${credColor};text-align:right;font-size:13px;font-weight:700">${p.credits.toLocaleString('cs-CZ')} kr</div>
       <div class="lb-roi ${roiCls}">${roiStr}</div>
     </div>`;
   });
