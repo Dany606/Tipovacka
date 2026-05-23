@@ -42,9 +42,9 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .btn-x{background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;padding:4px;transition:color .15s}
 .btn-x:hover{color:var(--red)}
 .site-nav{background:rgba(22,27,34,0.93);border-bottom:1px solid var(--border);backdrop-filter:blur(10px)}
-.nav-inner{max-width:900px;margin:0 auto;display:flex}
-.nav-btn{padding:12px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:var(--text2);background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;transition:all .15s}
-.nav-btn:hover{color:var(--text)}
+.nav-inner{max-width:760px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr))}
+.nav-btn{padding:12px 8px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:var(--text2);background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;transition:all .15s;text-align:center}
+.nav-btn:hover{color:var(--text);background:rgba(255,255,255,0.03)}
 .nav-btn.active{color:var(--gold);border-bottom-color:var(--gold)}
 .screen{display:none}.screen.active{display:block}
 .auth-page{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem 1rem;background:radial-gradient(ellipse at top,#1c2128 0%,var(--bg) 60%)}
@@ -511,8 +511,23 @@ async function renderMyTips(){
     const m=matches?.find(x=>x.id===t.match_id);if(!m)return;
     const res=evaluateTip(m,t);if(res>0)totalWon+=res;
     const inf=t.outcome||t.decision;
-    const outLbl=inf==='home'?m.home:inf==='away'?m.away:'Remíza';
-    html+=`<div class="tip-row"><div style="flex:1"><div style="font-weight:500;font-size:14px;color:var(--text)">${m.home} – ${m.away}</div><div style="font-size:12px;color:var(--text3);margin-top:2px">${outLbl} · ${t.stake?.toLocaleString('cs-CZ')} kr</div></div><div>${res===null?'<span class="b-wait">⏳</span>':res>0?`<span class="b-won">+${Math.round(res).toLocaleString('cs-CZ')} kr</span>`:'<span class="b-lost">Prohra</span>'}</div></div>`;
+    const outLbl=inf==='home'?m.home:inf==='away'?m.away:inf==='draw'?'Remíza':'–';
+    const isDone=m.status==='done';
+    const resultStr=isDone&&m.result_home!==null?`${m.result_home}:${m.result_away} (${m.decision==='reg'?'reg.':m.decision==='ot'?'prod.':'náj.'})`:null;
+    const tipTypeLabel=t.decision&&!t.outcome?'vítěz vč. prod.':'výsl. zákl. doby';
+    html+=`<div class="tip-row">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:13px;color:var(--text);margin-bottom:3px">${m.home} – ${m.away}</div>
+        <div style="font-size:12px;color:var(--text3)">${m.match_date}</div>
+        <div style="display:flex;gap:8px;margin-top:5px;flex-wrap:wrap;align-items:center">
+          <span style="font-size:12px;color:var(--text2)">Tip: <strong style="color:var(--text)">${outLbl}</strong></span>
+          <span style="font-size:11px;color:var(--text3)">${tipTypeLabel}</span>
+          <span style="font-size:12px;color:var(--text3)">· ${t.stake?.toLocaleString('cs-CZ')} kr</span>
+          ${resultStr?`<span style="font-size:12px;font-weight:600;color:var(--text2)">Výsledek: <strong style="color:var(--text)">${resultStr}</strong></span>`:''}
+        </div>
+      </div>
+      <div style="margin-left:12px;white-space:nowrap">${res===null?'<span class="b-wait">⏳ Čeká</span>':res>0?`<span class="b-won">+${Math.round(res).toLocaleString('cs-CZ')} kr</span>`:'<span class="b-lost">✗ Prohra</span>'}</div>
+    </div>`;
   });
   html+='</div>';
   if(totalWon>0)html=`<div style="background:rgba(63,185,80,.1);border:1px solid #238636;border-radius:var(--radius);padding:10px 14px;margin-bottom:10px;font-size:13px;color:var(--green)">💰 Celkové výhry: <strong>+${Math.round(totalWon).toLocaleString('cs-CZ')} kr</strong></div>`+html;
@@ -542,22 +557,18 @@ async function renderLeaderboard(){
       <span>Hráč</span>
       <span style="text-align:center">Tipy</span>
       <span style="text-align:right">Kredity</span>
-      <span style="text-align:right">Profit</span>
       <span style="text-align:right">ROI</span>
     </div>`;
   ranked.forEach((p,i)=>{
     const isMe=p.name===currentUser.username;
     const roiCls=p.roi>0?'pos':p.roi<0?'neg':'zero';
-    const roiStr=p.roi>0?'+'+p.roi.toFixed(1)+'%':p.roi.toFixed(1)+'%';
-    const profitStr=p.profit>0?'+'+p.profit.toLocaleString('cs-CZ'):p.profit.toLocaleString('cs-CZ');
-    const profitColor=p.profit>0?'var(--green)':p.profit<0?'var(--red)':'var(--text3)';
+    const roiStr=(p.roi>0?'+':'')+p.roi.toFixed(1)+'%';
     const credColor=p.credits>0?'var(--green)':'var(--red)';
     html+=`<div class="lb-row ${isMe?'me':''}">
       <div class="lb-rank">${medals[i]||i+1}</div>
       <div class="lb-name">${p.name}${isMe?'<span class="lb-me">ty</span>':''}</div>
       <div class="lb-tips">${p.tipCount}${p.settledCount<p.tipCount?'<span style="font-size:10px;color:var(--gold);margin-left:4px">'+(p.tipCount-p.settledCount)+' čeká</span>':''}</div>
-      <div class="lb-creds" style="color:${credColor}">${p.credits.toLocaleString('cs-CZ')} kr</div>
-      <div style="font-size:13px;font-weight:600;color:${profitColor};text-align:right">${profitStr} kr</div>
+      <div class="lb-creds" style="color:${credColor};text-align:right">${p.credits.toLocaleString('cs-CZ')} kr</div>
       <div class="lb-roi ${roiCls}">${roiStr}</div>
     </div>`;
   });
