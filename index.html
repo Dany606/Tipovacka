@@ -132,9 +132,10 @@ select:focus{border-color:var(--blue)}
 /* Přehledný žebříček – pevné sloupce a zarovnané hodnoty */
 .lb-wrap{background:rgba(22,27,34,0.88);border:1px solid var(--border);backdrop-filter:blur(6px);border-radius:var(--radius);overflow:hidden}
 .lb-wrap table{width:100%;border-collapse:collapse;table-layout:fixed}
+.lb-rank-col{width:52px}.lb-name-col{width:auto}.lb-tips-col{width:130px}.lb-creds-col{width:150px}.lb-roi-col{width:96px}
 .lb-wrap th,.lb-wrap td{padding:12px 14px;border-bottom:1px solid var(--border);vertical-align:middle;white-space:nowrap}
 .lb-wrap tbody tr:last-child td{border-bottom:none}
-.lb-wrap th{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;color:var(--text3)}
+.lb-wrap th{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;color:var(--text3);text-align:left}
 .lb-wrap tr.me{background:rgba(56,139,253,.08)}
 .lb-wrap .r{text-align:right}
 .lb-rank-cell{width:52px;text-align:center;color:var(--text);font-weight:700}
@@ -147,6 +148,7 @@ select:focus{border-color:var(--blue)}
 @media(max-width:520px){
   .lb-wrap{margin:0 -8px}
   .lb-wrap th,.lb-wrap td{padding:10px 8px}
+  .lb-rank-col{width:36px}.lb-tips-col{width:88px}.lb-creds-col{width:104px}.lb-roi-col{width:70px}
   .lb-rank-cell{width:36px}
   .lb-tips-cell{width:74px;font-size:12px}
   .lb-creds-cell{width:104px;font-size:14px}
@@ -597,11 +599,11 @@ async function renderLeaderboard(){
     const roiCls=p.roi>0?'roi-pos':p.roi<0?'roi-neg':'roi-zero';
     const roiStr=(p.roi>0?'+':'')+p.roi.toFixed(1)+'%';
     const credColor=p.credits>0?'var(--green)':'var(--red)';
-    const pending=p.tipCount-p.settledCount;
+    const pending=Math.max(0,p.tipCount-p.settledCount);
     html+=`<tr class="${isMe?'me':''}">
-      <td class="lb-rank-cell r">${medals[i]||i+1}</td>
+      <td class="lb-rank-cell">${medals[i]||i+1}</td>
       <td class="lb-name-cell">${p.name}${isMe?'<span class="lb-me">ty</span>':''}</td>
-      <td class="lb-tips-cell r">${p.tipCount}${pending>0?` <span class="lb-pending">(${pending} čeká)</span>`:''}</td>
+      <td class="lb-tips-cell r">${p.tipCount} <span class="lb-pending">(${pending} čeká)</span></td>
       <td class="lb-creds-cell r" style="color:${credColor}">${p.credits.toLocaleString('cs-CZ')} kr</td>
       <td class="lb-roi-cell r ${roiCls}">${roiStr}</td>
     </tr>`;
