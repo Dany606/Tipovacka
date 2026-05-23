@@ -286,51 +286,50 @@ function switchTab(name,btn){
 async function loadTicker(){
   try{
     const{data:users}=await sb.from('users').select('*');
-    const{data:wonTips}=await sb.from('tips').select('*').eq('settled',true).gt('winnings',0);
-    const{data:lostTips}=await sb.from('tips').select('*').eq('settled',true).eq('winnings',0);
-    const{data:doneMatches}=await sb.from('matches').select('*').eq('status','done');
+    const{data:doneMatches}=await sb.from('matches').select('*').eq('status','done').order('match_date',{ascending:false});
     const sorted=(users||[]).sort((a,b)=>b.credits-a.credits);
     const leader=sorted[0];
     const second=sorted[1];
 
-    // Největší výhra
-    let bigWin=null,bigWinUser=null,bigWinMatch=null;
-    if(wonTips&&wonTips.length>0){
-      bigWin=wonTips.reduce((a,b)=>b.winnings>a.winnings?b:a,wonTips[0]);
-      bigWinUser=(users||[]).find(u=>u.id===bigWin.user_id);
-      bigWinMatch=(doneMatches||[]).find(m=>m.id===bigWin.match_id);
-    }
+    // Poslední odehraný zápas
+    const lastMatch=doneMatches&&doneMatches.length>0?doneMatches[0]:null;
 
-    // Největší trefený kurz (výhra / sázka + 1)
-    let bigOdds=null,bigOddsUser=null,bigOddsMatch=null;
-    if(wonTips&&wonTips.length>0){
-      const withOdds=wonTips.map(t=>({...t,odds:t.stake>0?(t.winnings+t.stake)/t.stake:0}));
-      const top=withOdds.reduce((a,b)=>b.odds>a.odds?b:a,withOdds[0]);
-      if(top.odds>1.5){
-        bigOdds=top;
-        bigOddsUser=(users||[]).find(u=>u.id===top.user_id);
-        bigOddsMatch=(doneMatches||[]).find(m=>m.id===top.match_id);
+    // Tipy jen na poslední zápas
+    let lastWin=null,lastWinUser=null;
+    let lastLoss=null,lastLossUser=null;
+    let lastBigOdds=null,lastBigOddsUser=null;
+
+    if(lastMatch){
+      const{data:lastTips}=await sb.from('tips').select('*').eq('match_id',lastMatch.id).eq('settled',true);
+      if(lastTips&&lastTips.length>0){
+        // Největší výhra posledního zápasu
+        const won=lastTips.filter(t=>t.winnings>0);
+        if(won.length>0){
+          lastWin=won.reduce((a,b)=>b.winnings>a.winnings?b:a,won[0]);
+          lastWinUser=(users||[]).find(u=>u.id===lastWin.user_id);
+        }
+        // Největší prohra posledního zápasu
+        const lost=lastTips.filter(t=>t.winnings===0);
+        if(lost.length>0){
+          lastLoss=lost.reduce((a,b)=>b.stake>a.stake?b:a,lost[0]);
+          lastLossUser=(users||[]).find(u=>u.id===lastLoss.user_id);
+        }
+        // Největší kurz posledního zápasu
+        const withOdds=won.map(t=>({...t,odds:t.stake>0?(t.winnings+t.stake)/t.stake:0}));
+        if(withOdds.length>0){
+          const top=withOdds.reduce((a,b)=>b.odds>a.odds?b:a,withOdds[0]);
+          if(top.odds>1.3){lastBigOdds=top;lastBigOddsUser=(users||[]).find(u=>u.id===top.user_id);}
+        }
       }
     }
 
-    // Největší prohra
-    let bigLoss=null,bigLossUser=null;
-    if(lostTips&&lostTips.length>0){
-      bigLoss=lostTips.reduce((a,b)=>b.stake>a.stake?b:a,lostTips[0]);
-      bigLossUser=(users||[]).find(u=>u.id===bigLoss.user_id);
-    }
-
     let items='';
-    // Lídr
-    if(leader) items+=`<span class="t-item">🏆 <span class="lbl">Lídr:</span> <strong>${leader.username}</strong> · <span class="hi">${leader.credits.toLocaleString('cs-CZ')} kr</span></span><span class="t-div">·</span>`;
-    // 2. místo
-    if(second) items+=`<span class="t-item">🥈 <strong>${second.username}</strong> · ${second.credits.toLocaleString('cs-CZ')} kr</span><span class="t-div">·</span>`;
-    // Největší výhra
-    if(bigWin&&bigWinMatch) items+=`<span class="t-item">💰 <span class="lbl">Největší výhra:</span> <strong>${bigWinUser?.username||'–'}</strong> <span class="pos">+${bigWin.winnings.toLocaleString('cs-CZ')} kr</span> (${bigWinMatch.home} – ${bigWinMatch.away})</span><span class="t-div">·</span>`;
-    // Největší kurz
-    if(bigOdds&&bigOddsMatch) items+=`<span class="t-item">🎯 <span class="lbl">Největší kurz:</span> <strong>${bigOddsUser?.username||'–'}</strong> <span class="hi">${bigOdds.odds.toFixed(2)}×</span> (${bigOddsMatch.home} – ${bigOddsMatch.away})</span><span class="t-div">·</span>`;
-    // Největší prohra
-    if(bigLoss&&bigLoss.stake>500) items+=`<span class="t-item">📉 <span class="lbl">Největší prohra:</span> <strong>${bigLossUser?.username||'–'}</strong> <span class="neg">−${bigLoss.stake.toLocaleString('cs-CZ')} kr</span></span><span class="t-div">·</span>`;
+    if(leader) items+=`<span class="t-item">🏆 <span class="lbl">Lídr žebříčku:</span> <strong>${leader.username}</strong> <span class="hi">${leader.credits.toLocaleString('cs-CZ')} kr</span></span><span class="t-div">·</span>`;
+    if(second) items+=`<span class="t-item">🥈 <strong>${second.username}</strong> ${second.credits.toLocaleString('cs-CZ')} kr</span><span class="t-div">·</span>`;
+    if(lastMatch) items+=`<span class="t-item">🏒 <span class="lbl">Poslední zápas:</span> <strong>${lastMatch.home} – ${lastMatch.away}</strong> ${lastMatch.result_home}:${lastMatch.result_away}</span><span class="t-div">·</span>`;
+    if(lastWin) items+=`<span class="t-item">💰 <span class="lbl">Výhra kola:</span> <strong>${lastWinUser?.username||'–'}</strong> <span class="pos">+${lastWin.winnings.toLocaleString('cs-CZ')} kr</span></span><span class="t-div">·</span>`;
+    if(lastBigOdds&&lastBigOdds.odds>1.3) items+=`<span class="t-item">🎯 <span class="lbl">Kurz kola:</span> <strong>${lastBigOddsUser?.username||'–'}</strong> <span class="hi">${lastBigOdds.odds.toFixed(2)}×</span></span><span class="t-div">·</span>`;
+    if(lastLoss&&lastLoss.stake>100) items+=`<span class="t-item">📉 <span class="lbl">Prohra kola:</span> <strong>${lastLossUser?.username||'–'}</strong> <span class="neg">−${lastLoss.stake.toLocaleString('cs-CZ')} kr</span></span><span class="t-div">·</span>`;
 
     if(!items) return;
     document.getElementById('tickerTrack').innerHTML=items+items;
@@ -403,7 +402,16 @@ async function renderMatches(){
       const dec=m.decision==='reg'?'Reg. čas':m.decision==='ot'?'Prodloužení':'Nájezdy';
       html+=`<div class="result-big">${m.result_home} : ${m.result_away}</div><div class="result-dec">${dec}</div>`;
     }
-    if(!isDone&&m.odds_home){
+    // Parse match date to check if started
+    const matchStarted = (() => {
+      try {
+        const parts = m.match_date.match(/(\d+)\.(\d+)\.(\d+)\s+(\d+):(\d+)/);
+        if(!parts) return false;
+        const d = new Date(parts[3], parts[2]-1, parts[1], parts[4], parts[5]);
+        return new Date() > d;
+      } catch(e){ return false; }
+    })();
+    if(!isDone&&m.odds_home&&!matchStarted){
       const sel=pending[m.id]?.outcome||myTip?.outcome||'';
       const selDec=pending[m.id]?.decision||myTip?.decision||'';
       const stakeVal=myTip?.stake||500;
@@ -430,6 +438,16 @@ async function renderMatches(){
         </div>
         <button class="btn-tip" onclick="placeTip('${m.id}')" id="tipBtn_${m.id}">${myTip?'✓ Aktualizovat tip':'Potvrdit tip →'}</button>
       </div>`;
+    }else if(!isDone&&m.odds_home&&matchStarted){
+      html+=`<div style="padding:0.75rem 1rem;background:rgba(248,81,73,0.08);border-top:1px solid rgba(248,81,73,0.2);font-size:12px;color:var(--red);display:flex;align-items:center;gap:6px">🔒 Zápas již začal — tipování uzavřeno</div>`;
+      if(myTip){
+        const res=evaluateTip(m,myTip);
+        const inf=myTip.outcome||myTip.decision;
+        const outLbl=inf==='home'?m.home:inf==='away'?m.away:'Remíza';
+        html+=`<div class="tip-result"><span>Tvůj tip: <strong>${outLbl}</strong> · ${myTip.stake?.toLocaleString('cs-CZ')} kr</span><span class="b-wait">⏳ Čeká na výsledek</span></div>`;
+      }
+    }else if(!isDone&&m.odds_home&&matchStarted&&!myTip){
+      html+=`<div style="padding:0.75rem 1rem;background:rgba(248,81,73,0.08);border-top:1px solid rgba(248,81,73,0.2);font-size:12px;color:var(--red);display:flex;align-items:center;gap:6px">🔒 Zápas již začal — tipování uzavřeno</div>`;
     }else if(isDone&&myTip){
       const res=evaluateTip(m,myTip);
       const inf=myTip.outcome||myTip.decision;
@@ -509,14 +527,19 @@ async function renderLeaderboard(){
   const{data:tips}=await sb.from('tips').select('*');
   const ranked=(users||[]).map(u=>{
     const mt=(tips||[]).filter(t=>t.user_id===u.id);
-    let bonus=0;mt.forEach(t=>{const m=(matches||[]).find(x=>x.id===t.match_id);if(m){const r=evaluateTip(m,t);if(r>0)bonus+=r;}});
-    return{name:u.username,credits:u.credits,total:u.credits+bonus,tipCount:mt.length};
+    const settled=mt.filter(t=>t.settled);
+    const totalStaked=settled.reduce((s,t)=>s+(t.stake||0),0);
+    const totalWon=settled.reduce((s,t)=>s+(t.winnings||0),0);
+    const roi=totalStaked>0?((totalWon-totalStaked)/totalStaked*100):0;
+    return{name:u.username,credits:u.credits,total:u.credits,tipCount:mt.length,roi,totalStaked,totalWon};
   }).sort((a,b)=>b.total-a.total);
   const medals=['🥇','🥈','🥉'];
   let html='<div class="sec-title">Celkové pořadí</div><div class="lb-table">';
   ranked.forEach((p,i)=>{
     const isMe=p.name===currentUser.username;
-    html+=`<div class="lb-row ${isMe?'me':''}"><div class="lb-rank">${medals[i]||i+1}</div><div class="lb-name">${p.name}${isMe?'<span class="lb-me">ty</span>':''}</div><div class="lb-creds">${Math.round(p.total).toLocaleString('cs-CZ')} kr</div><div class="lb-tips">${p.tipCount} tipů</div></div>`;
+    const roiColor=p.roi>0?'var(--green)':p.roi<0?'var(--red)':'var(--text3)';
+    const roiStr=p.roi>0?'+'+p.roi.toFixed(1)+'%':p.roi.toFixed(1)+'%';
+    html+=`<div class="lb-row ${isMe?'me':''}"><div class="lb-rank">${medals[i]||i+1}</div><div class="lb-name">${p.name}${isMe?'<span class="lb-me">ty</span>':''}</div><div style="font-size:12px;color:${roiColor};font-weight:600;margin-right:12px">ROI ${roiStr}</div><div class="lb-creds">${Math.round(p.total).toLocaleString('cs-CZ')} kr</div><div class="lb-tips">${p.tipCount} tipů</div></div>`;
   });
   html+='</div>';
   el.innerHTML=html;
