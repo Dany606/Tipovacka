@@ -551,28 +551,29 @@ async function renderLeaderboard(){
     return{name:u.username,credits:u.credits,tipCount:mt.length,settledCount:settled.length,wins,losses,roi,profit};
   }).sort((a,b)=>b.credits-a.credits);
   const medals=['🥇','🥈','🥉'];
-  let html=`<div class="sec-title">Celkové pořadí</div><div class="lb-table">
-    <div class="lb-thead">
-      <span></span>
-      <span>Hráč</span>
-      <span style="text-align:right">Tipy</span>
-      <span style="text-align:right">Kredity</span>
-      <span style="text-align:right">ROI</span>
-    </div>`;
+  let html=`<div class="sec-title">Celkové pořadí</div><div class="lb-wrap"><table>
+    <thead><tr>
+      <th class="lb-rank-cell"></th>
+      <th>Hráč</th>
+      <th class="r">Tipy</th>
+      <th class="r">Kredity</th>
+      <th class="r">ROI</th>
+    </tr></thead><tbody>`;
   ranked.forEach((p,i)=>{
     const isMe=p.name===currentUser.username;
-    const roiCls=p.roi>0?'pos':p.roi<0?'neg':'zero';
+    const roiCls=p.roi>0?'roi-pos':p.roi<0?'roi-neg':'roi-zero';
     const roiStr=(p.roi>0?'+':'')+p.roi.toFixed(1)+'%';
     const credColor=p.credits>0?'var(--green)':'var(--red)';
-    html+=`<div class="lb-row ${isMe?'me':''}">
-      <div class="lb-rank">${medals[i]||i+1}</div>
-      <div class="lb-name">${p.name}${isMe?'<span class="lb-me">ty</span>':''}</div>
-      <div class="lb-tips">${p.tipCount}${p.settledCount<p.tipCount?' <span style="font-size:10px;color:var(--gold);">('+( p.tipCount-p.settledCount)+' čeká)</span>':''}</div>
-      <div class="lb-creds" style="color:${credColor};text-align:right;font-size:13px;font-weight:700">${p.credits.toLocaleString('cs-CZ')} kr</div>
-      <div class="lb-roi ${roiCls}">${roiStr}</div>
-    </div>`;
+    const pending=p.tipCount-p.settledCount;
+    html+=`<tr class="${isMe?'me':''}">
+      <td class="lb-rank-cell r">${medals[i]||i+1}</td>
+      <td class="lb-name-cell">${p.name}${isMe?'<span class="lb-me">ty</span>':''}</td>
+      <td class="lb-tips-cell r">${p.tipCount}${pending>0?` <span style="font-size:10px;color:var(--gold)">(${pending} čeká)</span>`:''}</td>
+      <td class="lb-creds-cell r" style="color:${credColor}">${p.credits.toLocaleString('cs-CZ')} kr</td>
+      <td class="lb-roi-cell r ${roiCls}">${roiStr}</td>
+    </tr>`;
   });
-  html+='</div>';
+  html+='</tbody></table></div>';
   el.innerHTML=html;
 }
 
