@@ -374,18 +374,29 @@ async function settleWinnings(){
   if(!currentComp)return;
   const{data:matches}=await sb.from('matches').select('*').eq('competition_id',currentComp.id).eq('status','done');
   if(!matches||!matches.length)return;
-  const{data:myTips}=await sb.from('tips').select('*').eq('user_id',currentUser.id).eq('settled',false);
+
+  // Bereme i už vyhodnocené tipy, aby se automaticky opravily starší chybně uložené výhry.
+  // Správně se vrací celý payout: vklad × kurz, protože vklad se odečítá už při podání tipu.
+  const{data:myTips}=await sb.from('tips').select('*').eq('user_id',currentUser.id);
   if(!myTips||!myTips.length)return;
-  let totalWon=0;
+
+  let creditAdjustment=0;
   for(const tip of myTips){
     const match=matches.find(m=>m.id===tip.match_id);if(!match)continue;
     const result=evaluateTip(match,tip);if(result===null)continue;
     const winnings=result>0?Math.round(result):0;
-    totalWon+=winnings;
-    await sb.from('tips').update({settled:true,winnings}).eq('id',tip.id);
+    const currentWinnings=Number(tip.winnings||0);
+
+    if(!tip.settled){
+      creditAdjustment+=winnings;
+      await sb.from('tips').update({settled:true,winnings}).eq('id',tip.id);
+    }else if(currentWinnings!==winnings){
+      creditAdjustment+=winnings-currentWinnings;
+      await sb.from('tips').update({winnings}).eq('id',tip.id);
+    }
   }
-  if(totalWon>0){
-    const nc=currentUser.credits+totalWon;
+  if(creditAdjustment!==0){
+    const nc=currentUser.credits+creditAdjustment;
     await sb.from('users').update({credits:nc}).eq('id',currentUser.id);
     currentUser.credits=nc;
   }
@@ -397,21 +408,24 @@ function evaluateTip(match,tip){
   const rh=match.result_home,ra=match.result_away;
   const actualOutcome=rh>ra?'home':rh<ra?'away':'draw';
   const actualWinner=rh>ra?'home':'away';
+  const stake=Number(tip.stake||0);
+
+  // Vklad se odečítá už při uložení tipu, proto výhra musí vracet celý payout = vklad × kurz.
   if(!tip.outcome&&tip.decision){
     if(tip.decision!==actualWinner)return 0;
     const ro=match.regulation_odds||{};
     const od=tip.decision==='home'?parseFloat(ro.home):parseFloat(ro.away);
-    return od>1?Math.round(tip.stake*(od-1)):Math.round(tip.stake*0.5);
+    return od>1?Math.round(stake*od):stake;
   }
   if(!tip.outcome)return null;
   if(tip.outcome!==actualOutcome)return 0;
   const odds=tip.outcome==='home'?parseFloat(match.odds_home):tip.outcome==='away'?parseFloat(match.odds_away):parseFloat(match.odds_draw);
-  if(!odds||odds<=1)return Math.round(tip.stake*0.2);
-  let w=Math.round(tip.stake*(odds-1));
+  if(!odds||odds<=1)return stake;
+  let w=Math.round(stake*odds);
   if(tip.decision&&tip.decision===actualWinner){
     const ro=match.regulation_odds||{};
     const od=tip.decision==='home'?parseFloat(ro.home):parseFloat(ro.away);
-    if(od>1)w=Math.round(tip.stake*(od-1));
+    if(od>1)w=Math.round(stake*od);
   }
   return w;
 }
