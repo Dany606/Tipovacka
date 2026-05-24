@@ -348,7 +348,7 @@ async function loadTicker(){
           lastLossUser=(users||[]).find(u=>u.id===lastLoss.user_id);
         }
         // Největší kurz posledního zápasu
-        const withOdds=won.map(t=>({...t,odds:t.stake>0?(t.winnings+t.stake)/t.stake:0}));
+        const withOdds=won.map(t=>({...t,odds:t.stake>0?t.winnings/t.stake:0}));
         if(withOdds.length>0){
           const top=withOdds.reduce((a,b)=>b.odds>a.odds?b:a,withOdds[0]);
           if(top.odds>1.3){lastBigOdds=top;lastBigOddsUser=(users||[]).find(u=>u.id===top.user_id);}
@@ -375,59 +375,71 @@ async function settleWinnings(){
   const{data:matches}=await sb.from('matches').select('*').eq('competition_id',currentComp.id).eq('status','done');
   if(!matches||!matches.length)return;
 
-  // Bereme i už vyhodnocené tipy, aby se automaticky opravily starší chybně uložené výhry.
-  // Správně se vrací celý payout: vklad × kurz, protože vklad se odečítá už při podání tipu.
-  const{data:myTips}=await sb.from('tips').select('*').eq('user_id',currentUser.id);
-  if(!myTips||!myTips.length)return;
+  // Vyhodnocení musí proběhnout pro všechny hráče, ne jen pro právě přihlášeného.
+  // Vklad se odečítá už při podání tipu, takže u výherního tipu se zpět připíše CELÁ výplata = vklad × kurz.
+  const matchIds=matches.map(m=>m.id);
+  const{data:tips}=await sb.from('tips').select('*').in('match_id',matchIds);
+  if(!tips||!tips.length)return;
 
-  let creditAdjustment=0;
-  for(const tip of myTips){
+  const adjustments={};
+  for(const tip of tips){
     const match=matches.find(m=>m.id===tip.match_id);if(!match)continue;
     const result=evaluateTip(match,tip);if(result===null)continue;
     const winnings=result>0?Math.round(result):0;
     const currentWinnings=Number(tip.winnings||0);
 
+    // Nepřičítat znovu už vyplacené stejné výhry. Jen dopočítat rozdíl, pokud byla dřív uložená špatná částka.
     if(!tip.settled){
-      creditAdjustment+=winnings;
+      adjustments[tip.user_id]=(adjustments[tip.user_id]||0)+winnings;
       await sb.from('tips').update({settled:true,winnings}).eq('id',tip.id);
     }else if(currentWinnings!==winnings){
-      creditAdjustment+=winnings-currentWinnings;
+      adjustments[tip.user_id]=(adjustments[tip.user_id]||0)+(winnings-currentWinnings);
       await sb.from('tips').update({winnings}).eq('id',tip.id);
     }
   }
-  if(creditAdjustment!==0){
-    const nc=currentUser.credits+creditAdjustment;
-    await sb.from('users').update({credits:nc}).eq('id',currentUser.id);
-    currentUser.credits=nc;
+
+  const userIds=Object.keys(adjustments).filter(id=>adjustments[id]!==0);
+  if(!userIds.length)return;
+  const{data:users}=await sb.from('users').select('*').in('id',userIds);
+  for(const u of users||[]){
+    const nc=Number(u.credits||0)+adjustments[u.id];
+    await sb.from('users').update({credits:nc}).eq('id',u.id);
+    if(currentUser&&u.id===currentUser.id)currentUser.credits=nc;
   }
+}
+
+function getWinnerOdds(match,side){
+  const ro=match.regulation_odds||{};
+  const fallbackHome=parseFloat(match.odds_home)*0.92;
+  const fallbackAway=parseFloat(match.odds_away)*0.92;
+  const od=side==='home'?parseFloat(ro.home||fallbackHome):parseFloat(ro.away||fallbackAway);
+  return od;
 }
 
 function evaluateTip(match,tip){
   if(match.result_home===null||match.result_home===undefined)return null;
   if(match.result_away===null||match.result_away===undefined)return null;
-  const rh=match.result_home,ra=match.result_away;
+  const rh=Number(match.result_home),ra=Number(match.result_away);
   const actualOutcome=rh>ra?'home':rh<ra?'away':'draw';
   const actualWinner=rh>ra?'home':'away';
   const stake=Number(tip.stake||0);
+  if(!stake)return 0;
 
-  // Vklad se odečítá už při uložení tipu, proto výhra musí vracet celý payout = vklad × kurz.
-  if(!tip.outcome&&tip.decision){
+  // Tip je vždy jen jeden typ: buď 1X2 v základní době, nebo vítěz vč. prodloužení/nájezdů.
+  // U starších uložených tipů, kde omylem zůstaly oba typy, má přednost 1X2, protože tak se doteď zobrazoval v Moje tipy.
+  if(tip.outcome){
+    if(tip.outcome!==actualOutcome)return 0;
+    const odds=tip.outcome==='home'?parseFloat(match.odds_home):tip.outcome==='away'?parseFloat(match.odds_away):parseFloat(match.odds_draw);
+    return odds>1?Math.round(stake*odds):stake;
+  }
+
+  if(tip.decision){
     if(tip.decision!==actualWinner)return 0;
-    const ro=match.regulation_odds||{};
-    const od=tip.decision==='home'?parseFloat(ro.home):parseFloat(ro.away);
-    return od>1?Math.round(stake*od):stake;
+    const odds=getWinnerOdds(match,tip.decision);
+    return odds>1?Math.round(stake*odds):stake;
   }
-  if(!tip.outcome)return null;
-  if(tip.outcome!==actualOutcome)return 0;
-  const odds=tip.outcome==='home'?parseFloat(match.odds_home):tip.outcome==='away'?parseFloat(match.odds_away):parseFloat(match.odds_draw);
-  if(!odds||odds<=1)return stake;
-  let w=Math.round(stake*odds);
-  if(tip.decision&&tip.decision===actualWinner){
-    const ro=match.regulation_odds||{};
-    const od=tip.decision==='home'?parseFloat(ro.home):parseFloat(ro.away);
-    if(od>1)w=Math.round(stake*od);
-  }
-  return w;
+
+  return null;
 }
 
 
@@ -529,8 +541,16 @@ async function renderMatches(){
 
 function selOpt(mid,key,val,btn){
   if(!pending[mid])pending[mid]={};
-  pending[mid][key]=val;
-  btn.parentElement.querySelectorAll('.odd-btn').forEach(b=>b.classList.remove('sel'));
+  // Jen jeden typ tipu najednou: klik na 1X2 zruší vítěze vč. prod., klik na vítěze zruší 1X2.
+  if(key==='outcome'){
+    pending[mid].outcome=val;
+    pending[mid].decision=null;
+  }else if(key==='decision'){
+    pending[mid].decision=val;
+    pending[mid].outcome=null;
+  }
+  const form=btn.closest('.tip-form');
+  if(form)form.querySelectorAll('.odd-btn').forEach(b=>b.classList.remove('sel'));
   btn.classList.add('sel');
   updatePotential(mid);
 }
@@ -538,10 +558,16 @@ function selOpt(mid,key,val,btn){
 function updatePotential(mid){
   const el=document.getElementById('pot_'+mid);if(!el)return;
   const m=allMatches.find(x=>x.id===mid);if(!m)return;
-  const outcome=pending[mid]?.outcome||allTips.find(t=>t.match_id===mid)?.outcome||'';
+  const existing=allTips.find(t=>t.match_id===mid)||{};
+  const hasPending=pending[mid]&&Object.prototype.hasOwnProperty.call(pending[mid],'outcome')||pending[mid]&&Object.prototype.hasOwnProperty.call(pending[mid],'decision');
+  const outcome=hasPending?pending[mid]?.outcome:existing.outcome;
+  const decision=hasPending?pending[mid]?.decision:existing.decision;
   const stake=parseInt(document.getElementById('st_'+mid)?.value||0);
-  if(!outcome||!stake){el.textContent='';return;}
-  const odds=outcome==='home'?m.odds_home:outcome==='away'?m.odds_away:m.odds_draw;
+  if(!stake){el.textContent='';return;}
+  let odds=null;
+  if(outcome)odds=outcome==='home'?parseFloat(m.odds_home):outcome==='away'?parseFloat(m.odds_away):parseFloat(m.odds_draw);
+  else if(decision)odds=getWinnerOdds(m,decision);
+  if(!odds){el.textContent='';return;}
   el.textContent='→ '+Math.round(stake*odds).toLocaleString('cs-CZ')+' kr';
 }
 
@@ -556,7 +582,19 @@ async function placeTip(mid){
   let nc=currentUser.credits;
   if(existing)nc+=existing.stake;
   nc-=stake;
-  const tipData={user_id:currentUser.id,match_id:mid,outcome:p.outcome||existing?.outcome||null,decision:p.decision||existing?.decision||null,goals:null,score_home:null,score_away:null,stake,settled:false,winnings:0};
+  let outcome=null,decision=null;
+  if(Object.prototype.hasOwnProperty.call(p,'outcome')){
+    outcome=p.outcome||null;
+    decision=null;
+  }else if(Object.prototype.hasOwnProperty.call(p,'decision')){
+    outcome=null;
+    decision=p.decision||null;
+  }else{
+    outcome=existing?.outcome||null;
+    decision=existing?.decision||null;
+  }
+  if(!outcome&&!decision){alert('Vyber tip.');btn.disabled=false;btn.textContent=existing?'✓ Aktualizovat tip':'Uložit tip';return;}
+  const tipData={user_id:currentUser.id,match_id:mid,outcome,decision,goals:null,score_home:null,score_away:null,stake,settled:false,winnings:0};
   if(existing){await sb.from('tips').update(tipData).eq('id',existing.id);const idx=allTips.findIndex(t=>t.match_id===mid);allTips[idx]={...existing,...tipData};}
   else{const{data}=await sb.from('tips').insert(tipData).select().single();if(data)allTips.push(data);}
   await sb.from('users').update({credits:nc}).eq('id',currentUser.id);
@@ -605,6 +643,8 @@ async function renderMyTips(){
 }
 
 async function renderLeaderboard(){
+  await settleWinnings();
+  updateCreditsDisplay();
   const el=document.getElementById('leaderboardContent');
   el.innerHTML='<div class="loading"><div class="spin"></div><br>Načítám...</div>';
   const{data:users}=await sb.from('users').select('*');
@@ -737,7 +777,9 @@ async function saveResult(mid){
   const dec=document.getElementById('rd_'+mid).value;
   if(isNaN(rh)||isNaN(ra)){alert('Zadej výsledek.');return;}
   await sb.from('matches').update({result_home:rh,result_away:ra,decision:dec,status:'done'}).eq('id',mid);
-  alert('Výsledek uložen!');renderAdmin();renderMatches();
+  await settleWinnings();
+  updateCreditsDisplay();
+  alert('Výsledek uložen a tipy všech hráčů přepočítány!');renderAdmin();renderMatches();
 }
 </script>
 </body>
