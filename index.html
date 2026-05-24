@@ -79,7 +79,6 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .update-text{color:var(--text)}
 .update-text strong{color:var(--gold)}
 .update-empty{color:var(--text3);font-size:12px;padding:4px 0}
-.update-warning{color:var(--gold);font-size:12px;line-height:1.45;background:rgba(227,179,65,.08);border:1px solid rgba(227,179,65,.22);border-radius:7px;padding:8px 10px}
 @media(max-width:560px){.update-row{grid-template-columns:1fr;gap:2px}}
 .match-card{background:rgba(22,27,34,0.88);border:1px solid var(--border);backdrop-filter:blur(6px);border-radius:var(--radius);margin-bottom:8px;overflow:hidden;transition:border-color .15s}
 .match-card:hover{border-color:var(--border2)}
@@ -311,7 +310,6 @@ async function openMain(){
   updateCreditsDisplay();
   loadTicker();
   await loadUpdates();
-  subscribeUpdates();
   await renderMatches();
 }
 
@@ -399,16 +397,22 @@ function formatUpdateDate(value){
   return d.toLocaleDateString('cs-CZ',{day:'2-digit',month:'2-digit',year:'numeric'});
 }
 
-function renderUpdates(items,warningText=''){
+function localCreditUpdates(){
+  try{return JSON.parse(localStorage.getItem('tip_credit_updates')||'[]');}
+  catch(e){return [];}
+}
+
+function saveLocalCreditUpdate(item){
+  const arr=localCreditUpdates();
+  arr.unshift(item);
+  localStorage.setItem('tip_credit_updates',JSON.stringify(arr.slice(0,20)));
+}
+
+function renderUpdates(items){
   const box=document.getElementById('updatesBox');
   const list=document.getElementById('updatesList');
   if(!box||!list)return;
   const rows=(items||[]).slice(0,8);
-  if(warningText){
-    list.innerHTML=`<div class="update-warning">${escapeHTML(warningText)}</div>`;
-    box.style.display='block';
-    return;
-  }
   if(!rows.length){box.style.display='none';return;}
   list.innerHTML=rows.map(u=>{
     const created=u.created_at||u.createdAt||new Date().toISOString();
@@ -421,34 +425,22 @@ function renderUpdates(items,warningText=''){
 
 async function loadUpdates(){
   try{
-    const{data,error}=await sb.from('updates').select('id,type,username,amount,user_id,created_at').eq('type','credits_purchase').order('created_at',{ascending:false}).limit(8);
-    if(error)throw error;
-    renderUpdates(data||[]);
-  }catch(e){
-    console.warn('updates table:',e);
-    renderUpdates([],currentUser&&currentUser.username===ADMIN_USERNAME?'Aktualizace nejsou ještě propojené se Supabase. Vytvoř v Supabase tabulku updates podle SQL, které posílám k souboru.':'');
-  }
-}
-
-function subscribeUpdates(){
-  if(updatesChannel)return;
-  try{
-    updatesChannel=sb.channel('updates-credit-purchases')
-      .on('postgres_changes',{event:'INSERT',schema:'public',table:'updates',filter:'type=eq.credits_purchase'},()=>loadUpdates())
-      .subscribe();
-  }catch(e){console.warn('updates realtime:',e);}
+    const{data,error}=await sb.from('updates').select('*').eq('type','credits_purchase').order('created_at',{ascending:false}).limit(8);
+    if(!error&&data){renderUpdates(data);return;}
+  }catch(e){}
+  renderUpdates(localCreditUpdates());
 }
 
 async function addCreditUpdate(username,amount,userId){
   const item={type:'credits_purchase',username,amount:Number(amount)||0,user_id:userId||null,created_at:new Date().toISOString()};
-  const{error}=await sb.from('updates').insert(item);
-  if(error){
-    console.warn('updates insert:',error);
-    alert('Kredity jsou upravené, ale záznam do Aktualizací se nepodařilo uložit pro všechny. Zkontroluj, že v Supabase existuje tabulka updates a má povolené INSERT/SELECT policy.');
-    return false;
+  try{
+    const{error}=await sb.from('updates').insert(item);
+    if(error)throw error;
+  }catch(e){
+    // Fallback: když v Supabase ještě není tabulka updates, aktualizace zůstane aspoň v prohlížeči admina.
+    saveLocalCreditUpdate(item);
   }
   await loadUpdates();
-  return true;
 }
 
 async function settleWinnings(){
