@@ -706,6 +706,7 @@ async function renderAdmin(){
   const el=document.getElementById('adminContent');
   el.innerHTML='<div class="loading"><div class="spin"></div><br>Načítám...</div>';
   const{data:comps}=await sb.from('competitions').select('*').order('created_at',{ascending:false});
+  const{data:users}=await sb.from('users').select('id,username,credits').order('username');
   const{data:matches}=currentComp?await sb.from('matches').select('*').eq('competition_id',currentComp.id).order('match_date'):{data:[]};
   let html=`<div class="admin-box"><h3>Nová soutěž</h3>
     <div class="field"><label>Název</label><input type="text" id="compName" placeholder="NHL Playoff 2026"></div>
@@ -716,6 +717,16 @@ async function renderAdmin(){
   if(comps&&comps.length){comps.forEach(c=>{html+=`<div class="comp-item"><span style="flex:1;font-weight:500;color:var(--text)">${c.name} · ${c.league}</span>${c.active?'<span class="comp-active">Aktivní</span>':`<button class="btn-a" style="font-size:11px;padding:3px 10px" onclick="activateComp('${c.id}')">Aktivovat</button>`}</div>`;});}
   else html+='<div class="empty">Žádné soutěže</div>';
   html+='</div>';
+
+  const userOptions=(users||[]).map(u=>`<option value="${u.id}">${u.username} · ${(Number(u.credits)||0).toLocaleString('cs-CZ')} kr</option>`).join('');
+  html+=`<div class="admin-box"><h3>Upravit kredity hráče</h3>
+    <div class="field"><label>Hráč</label><select id="creditUser">${userOptions||'<option value="">Žádní hráči</option>'}</select></div>
+    <div class="field"><label>Akce</label><select id="creditMode"><option value="add">Přidat kredity</option><option value="sub">Odebrat kredity</option><option value="set">Nastavit přesnou hodnotu</option></select></div>
+    <div class="field"><label>Částka</label><input type="number" id="creditAmount" min="0" step="1" placeholder="Např. 5000"></div>
+    <button class="btn-a btn-g" onclick="adjustUserCredits()" style="width:100%">Uložit úpravu kreditů</button>
+    <div style="color:var(--text3);font-size:12px;margin-top:8px;line-height:1.4">Tip: při volbě „Přidat“ se částka přičte ke stávajícím kreditům, při volbě „Nastavit“ se kredity přepíšou na zadanou hodnotu.</div>
+  </div>`;
+
   if(currentComp){
     html+=`<div class="admin-box"><h3>Přidat zápas → ${currentComp.name}</h3>
       <div class="field"><label>Domácí</label><input type="text" id="mHome" placeholder="Colorado Avalanche"></div>
@@ -747,6 +758,40 @@ async function renderAdmin(){
     }
   }
   el.innerHTML=html;
+}
+
+
+async function adjustUserCredits(){
+  if(!currentUser||currentUser.username!==ADMIN_USERNAME){alert('Tahle akce je jen pro admina.');return;}
+  const userId=document.getElementById('creditUser')?.value;
+  const mode=document.getElementById('creditMode')?.value;
+  const amount=parseInt(document.getElementById('creditAmount')?.value,10);
+  if(!userId){alert('Vyber hráče.');return;}
+  if(isNaN(amount)||amount<0){alert('Zadej platnou částku.');return;}
+
+  const{data:user,error:loadErr}=await sb.from('users').select('id,username,credits').eq('id',userId).single();
+  if(loadErr||!user){alert('Hráče se nepodařilo načíst.');return;}
+
+  const currentCredits=Number(user.credits)||0;
+  let newCredits=currentCredits;
+  if(mode==='add')newCredits=currentCredits+amount;
+  else if(mode==='sub')newCredits=currentCredits-amount;
+  else if(mode==='set')newCredits=amount;
+  else{alert('Neplatná akce.');return;}
+
+  if(newCredits<0){alert('Kredity nemůžou být pod nulou. Zadej menší částku nebo nastav přesnou hodnotu.');return;}
+
+  const actionText=mode==='add'?'přidat':mode==='sub'?'odebrat':'nastavit na';
+  if(!confirm(`${user.username}: ${currentCredits.toLocaleString('cs-CZ')} kr → ${newCredits.toLocaleString('cs-CZ')} kr\n\nOpravdu chceš ${actionText} ${amount.toLocaleString('cs-CZ')} kr?`))return;
+
+  const{error}=await sb.from('users').update({credits:newCredits}).eq('id',userId);
+  if(error){alert('Kredity se nepodařilo uložit.');return;}
+
+  if(currentUser&&currentUser.id===userId){currentUser.credits=newCredits;updateCreditsDisplay();}
+  alert('Kredity upraveny.');
+  renderAdmin();
+  renderLeaderboard();
+  loadTicker();
 }
 
 async function createComp(){
