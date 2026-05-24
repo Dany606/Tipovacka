@@ -70,6 +70,17 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .rule strong{color:var(--gold)}
 .rules-note{font-size:11.5px;color:var(--text3);line-height:1.6}
 .rules-note b{color:var(--text2)}
+
+.updates-box{background:rgba(22,27,34,0.9);border:1px solid rgba(227,179,65,.32);backdrop-filter:blur(6px);border-radius:var(--radius);padding:1rem 1.1rem;margin:-.35rem 0 1rem;box-shadow:0 0 18px rgba(227,179,65,.08)}
+.updates-box h3{font-size:11px;font-weight:600;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:.75rem;text-shadow:0 0 10px rgba(227,179,65,.25)}
+.update-list{display:flex;flex-direction:column;gap:6px}
+.update-row{display:grid;grid-template-columns:118px 1fr;gap:10px;align-items:start;padding:8px 10px;background:rgba(13,17,23,.55);border:1px solid rgba(48,54,61,.9);border-radius:7px;font-size:12.5px;line-height:1.35}
+.update-date{color:var(--text3);font-variant-numeric:tabular-nums}
+.update-text{color:var(--text)}
+.update-text strong{color:var(--gold)}
+.update-empty{color:var(--text3);font-size:12px;padding:4px 0}
+.update-warning{color:var(--gold);font-size:12px;line-height:1.45;background:rgba(227,179,65,.08);border:1px solid rgba(227,179,65,.22);border-radius:7px;padding:8px 10px}
+@media(max-width:560px){.update-row{grid-template-columns:1fr;gap:2px}}
 .match-card{background:rgba(22,27,34,0.88);border:1px solid var(--border);backdrop-filter:blur(6px);border-radius:var(--radius);margin-bottom:8px;overflow:hidden;transition:border-color .15s}
 .match-card:hover{border-color:var(--border2)}
 .match-head{display:flex;align-items:center;justify-content:space-between;padding:.8rem 1rem .6rem;border-bottom:1px solid var(--border)}
@@ -236,6 +247,10 @@ select:focus{border-color:var(--blue)}
       </div>
       <div class="rules-note"><b>Výsledek základní doby (1X2)</b> — výhra = sázka × kurz &nbsp;·&nbsp; <b>Vítěz vč. prod./náj.</b> — výhra = sázka × kurz vítěze</div>
     </div>
+    <div class="updates-box" id="updatesBox" style="display:none">
+      <h3>📝 Aktualizace</h3>
+      <div class="update-list" id="updatesList"><div class="update-empty">Zatím žádné aktualizace.</div></div>
+    </div>
     <div id="matchList"><div class="loading"><div class="spin"></div><br>Načítám zápasy...</div></div>
   </div>
   <div id="tab-mytips" class="page" style="display:none"><div id="myTipsList"></div></div>
@@ -295,6 +310,8 @@ async function openMain(){
   await settleWinnings();
   updateCreditsDisplay();
   loadTicker();
+  await loadUpdates();
+  subscribeUpdates();
   await renderMatches();
 }
 
@@ -311,6 +328,7 @@ function switchTab(name,btn){
   ['matches','mytips','leaderboard','admin'].forEach(t=>{const el=document.getElementById('tab-'+t);if(el)el.style.display=t===name?'block':'none';});
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
+  if(name==='matches')loadUpdates();
   if(name==='mytips')renderMyTips();
   if(name==='leaderboard')renderLeaderboard();
   if(name==='admin')renderAdmin();
@@ -368,6 +386,69 @@ async function loadTicker(){
     document.getElementById('tickerTrack').innerHTML=items+items;
     document.getElementById('tickerBar').style.display='block';
   }catch(e){console.warn('ticker:',e);}
+}
+
+
+function escapeHTML(str){
+  return String(str??'').replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+}
+
+function formatUpdateDate(value){
+  const d=value?new Date(value):new Date();
+  if(isNaN(d.getTime()))return '';
+  return d.toLocaleDateString('cs-CZ',{day:'2-digit',month:'2-digit',year:'numeric'});
+}
+
+function renderUpdates(items,warningText=''){
+  const box=document.getElementById('updatesBox');
+  const list=document.getElementById('updatesList');
+  if(!box||!list)return;
+  const rows=(items||[]).slice(0,8);
+  if(warningText){
+    list.innerHTML=`<div class="update-warning">${escapeHTML(warningText)}</div>`;
+    box.style.display='block';
+    return;
+  }
+  if(!rows.length){box.style.display='none';return;}
+  list.innerHTML=rows.map(u=>{
+    const created=u.created_at||u.createdAt||new Date().toISOString();
+    const username=escapeHTML(u.username||u.player||'hráč');
+    const amount=Number(u.amount||0).toLocaleString('cs-CZ');
+    return `<div class="update-row"><div class="update-date">${formatUpdateDate(created)}</div><div class="update-text">Hráč <strong>${username}</strong> si zakoupil <strong>${amount} kreditů</strong>.</div></div>`;
+  }).join('');
+  box.style.display='block';
+}
+
+async function loadUpdates(){
+  try{
+    const{data,error}=await sb.from('updates').select('id,type,username,amount,user_id,created_at').eq('type','credits_purchase').order('created_at',{ascending:false}).limit(8);
+    if(error)throw error;
+    renderUpdates(data||[]);
+  }catch(e){
+    console.warn('updates table:',e);
+    renderUpdates([],currentUser&&currentUser.username===ADMIN_USERNAME?'Aktualizace nejsou ještě propojené se Supabase. Vytvoř v Supabase tabulku updates podle SQL, které posílám k souboru.':'');
+  }
+}
+
+function subscribeUpdates(){
+  if(updatesChannel)return;
+  try{
+    updatesChannel=sb.channel('updates-credit-purchases')
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'updates',filter:'type=eq.credits_purchase'},()=>loadUpdates())
+      .subscribe();
+  }catch(e){console.warn('updates realtime:',e);}
+}
+
+async function addCreditUpdate(username,amount,userId){
+  const item={type:'credits_purchase',username,amount:Number(amount)||0,user_id:userId||null,created_at:new Date().toISOString()};
+  const{error}=await sb.from('updates').insert(item);
+  if(error){
+    console.warn('updates insert:',error);
+    alert('Kredity jsou upravené, ale záznam do Aktualizací se nepodařilo uložit pro všechny. Zkontroluj, že v Supabase existuje tabulka updates a má povolené INSERT/SELECT policy.');
+    return false;
+  }
+  await loadUpdates();
+  return true;
 }
 
 async function settleWinnings(){
@@ -788,10 +869,12 @@ async function adjustUserCredits(){
   if(error){alert('Kredity se nepodařilo uložit.');return;}
 
   if(currentUser&&currentUser.id===userId){currentUser.credits=newCredits;updateCreditsDisplay();}
+  if(mode==='add'&&amount>0)await addCreditUpdate(user.username,amount,userId);
   alert('Kredity upraveny.');
   renderAdmin();
   renderLeaderboard();
   loadTicker();
+  loadUpdates();
 }
 
 async function createComp(){
