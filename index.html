@@ -420,8 +420,15 @@ function evaluateTip(match,tip){
   if(match.result_home===null||match.result_home===undefined)return null;
   if(match.result_away===null||match.result_away===undefined)return null;
   const rh=Number(match.result_home),ra=Number(match.result_away);
-  const actualOutcome=rh>ra?'home':rh<ra?'away':'draw';
-  const actualWinner=rh>ra?'home':'away';
+  const dec=match.decision||'reg';
+
+  // 1X2 je VÝSLEDEK ZÁKLADNÍ DOBY.
+  // Když zápas skončil až v prodloužení/nájezdech, základní doba byla remíza,
+  // i když finální skóre ukazuje vítěze 3:2 apod.
+  const actualOutcome=dec==='reg'?(rh>ra?'home':rh<ra?'away':'draw'):'draw';
+
+  // Vítěz vč. prodloužení/nájezdů se bere podle finálního skóre.
+  const actualWinner=rh>ra?'home':rh<ra?'away':null;
   const stake=Number(tip.stake||0);
   if(!stake)return 0;
 
@@ -434,7 +441,7 @@ function evaluateTip(match,tip){
   }
 
   if(tip.decision){
-    if(tip.decision!==actualWinner)return 0;
+    if(!actualWinner||tip.decision!==actualWinner)return 0;
     const odds=getWinnerOdds(match,tip.decision);
     return odds>1?Math.round(stake*odds):stake;
   }
