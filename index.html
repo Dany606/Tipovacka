@@ -612,6 +612,14 @@ function isMatchOlderThanDays(match,days=2){
   return d.getTime() < Date.now() - days*24*60*60*1000;
 }
 
+function isMatchLocked(match){
+  if(!match)return false;
+  if(match.status==='done'||match.status==='live')return true;
+  const d=parseMatchDate(match.match_date);
+  if(!d)return false;
+  return d.getTime() <= Date.now();
+}
+
 async function renderMatches(){
   const el=document.getElementById('matchList');
   if(!currentComp){el.innerHTML='<div class="empty">Žádná aktivní soutěž.</div>';return;}
@@ -917,9 +925,15 @@ async function renderAdmin(){
   if(currentUser.username!==ADMIN_USERNAME)return;
   const el=document.getElementById('adminContent');
   el.innerHTML='<div class="loading"><div class="spin"></div><br>Načítám...</div>';
-  const{data:comps}=await sb.from('competitions').select('*').order('created_at',{ascending:false});
-  const{data:users}=await sb.from('users').select('id,username,credits').order('username');
-  const{data:matches}=currentComp?await sb.from('matches').select('*').eq('competition_id',currentComp.id).order('match_date'):{data:[]};
+  const compsResp=await sb.from('competitions').select('*').order('created_at',{ascending:false});
+  if(compsResp.error){el.innerHTML='<div class="empty">Admin se nepodařilo načíst: '+escapeHTML(compsResp.error.message)+'</div>';return;}
+  const usersResp=await sb.from('users').select('id,username,credits').order('username');
+  if(usersResp.error){el.innerHTML='<div class="empty">Hráče se nepodařilo načíst: '+escapeHTML(usersResp.error.message)+'</div>';return;}
+  const matchesResp=currentComp?await sb.from('matches').select('*').eq('competition_id',currentComp.id).order('match_date'):{data:[],error:null};
+  if(matchesResp.error){el.innerHTML='<div class="empty">Zápasy se nepodařilo načíst: '+escapeHTML(matchesResp.error.message)+'</div>';return;}
+  const comps=compsResp.data||[];
+  const users=usersResp.data||[];
+  const matches=matchesResp.data||[];
   let html=`<div class="admin-box"><h3>Nová soutěž</h3>
     <div class="field"><label>Název</label><input type="text" id="compName" placeholder="NHL Playoff 2026"></div>
     <div class="field"><label>Liga</label><select id="compLeague" onchange="setCompetitionPreset()"><option value="nhl">NHL</option><option value="extraliga">Česká extraliga</option><option value="Mistrovství světa">Mistrovství světa</option></select></div>
