@@ -1146,9 +1146,7 @@ ${label}?`;
   if(tipCount)msg+=`
 
 Pozor: smaže se i ${tipCount} tipů navázaných na tento zápas.`;
-  if(match&&match.status==='done')msg+='
-
-Zápas už je ukončený. Smazání automaticky nevrátí dříve připsané kredity.';
+  if(match&&match.status==='done')msg+='\n\nZápas už je ukončený. Smazání automaticky nevrátí dříve připsané kredity.';
   if(!confirm(msg))return;
 
   if(tipCount){
