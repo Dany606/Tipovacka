@@ -307,14 +307,34 @@ async function openMain(){
   if(currentUser.username===ADMIN_USERNAME)document.getElementById('adminNavBtn').style.display='block';
   await loadActiveComp();
   await settleWinnings();
-  updateCreditsDisplay();
+  await updateCreditsDisplay();
   loadTicker();
   await loadUpdates();
   await renderMatches();
 }
 
-function updateCreditsDisplay(){
-  document.getElementById('topCredits').textContent=currentUser.credits.toLocaleString('cs-CZ')+' kr';
+async function getCurrentUserPoints(){
+  if(!currentUser||!currentComp)return 0;
+  const{data:compMatches}=await sb.from('matches').select('id').eq('competition_id',currentComp.id);
+  const compMatchIds=(compMatches||[]).map(m=>m.id);
+  if(compMatchIds.length===0)return 0;
+  const{data:tips}=await sb.from('tips').select('match_id,winnings,settled').eq('user_id',currentUser.id).eq('settled',true).in('match_id',compMatchIds);
+  return (tips||[]).reduce((sum,t)=>sum+(Number(t.winnings)||0),0);
+}
+
+async function updateCreditsDisplay(){
+  const el=document.getElementById('topCredits');
+  if(!el||!currentUser)return;
+  if(isPointsCompetition()){
+    try{
+      const points=await getCurrentUserPoints();
+      el.textContent=Math.round(points).toLocaleString('cs-CZ')+' bodů';
+    }catch(e){
+      el.textContent='0 bodů';
+    }
+    return;
+  }
+  el.textContent=currentUser.credits.toLocaleString('cs-CZ')+' kr';
 }
 
 async function loadActiveComp(){
@@ -754,7 +774,7 @@ async function placeTip(mid){
   if(existing){await sb.from('tips').update(tipData).eq('id',existing.id);const idx=allTips.findIndex(t=>t.match_id===mid);allTips[idx]={...existing,...tipData};}
   else{const{data}=await sb.from('tips').insert(tipData).select().single();if(data)allTips.push(data);}
   await sb.from('users').update({credits:nc}).eq('id',currentUser.id);
-  currentUser.credits=nc;updateCreditsDisplay();
+  currentUser.credits=nc;await updateCreditsDisplay();
   btn.disabled=false;btn.textContent='✓ Uloženo!';
   setTimeout(()=>{btn.textContent='✓ Aktualizovat tip';btn.disabled=false;},2000);
 }
@@ -812,7 +832,7 @@ async function renderMyTips(){
 
 async function renderLeaderboard(){
   await settleWinnings();
-  updateCreditsDisplay();
+  await updateCreditsDisplay();
   const el=document.getElementById('leaderboardContent');
   el.innerHTML='<div class="loading"><div class="spin"></div><br>Načítám...</div>';
   const pointsMode=isPointsCompetition();
@@ -968,7 +988,7 @@ async function adjustUserCredits(){
   const{error}=await sb.from('users').update({credits:newCredits}).eq('id',userId);
   if(error){alert('Kredity se nepodařilo uložit.');return;}
 
-  if(currentUser&&currentUser.id===userId){currentUser.credits=newCredits;updateCreditsDisplay();}
+  if(currentUser&&currentUser.id===userId){currentUser.credits=newCredits;await updateCreditsDisplay();}
   if(mode==='add'&&amount>0)await addCreditUpdate(user.username,amount,userId);
   alert('Kredity upraveny.');
   renderAdmin();
@@ -1032,7 +1052,7 @@ async function saveResult(mid){
   if(isNaN(rh)||isNaN(ra)){alert('Zadej výsledek.');return;}
   await sb.from('matches').update({result_home:rh,result_away:ra,decision:dec,status:'done'}).eq('id',mid);
   await settleWinnings();
-  updateCreditsDisplay();
+  await updateCreditsDisplay();
   alert('Výsledek uložen a tipy všech hráčů přepočítány!');renderAdmin();renderMatches();
 }
 </script>
