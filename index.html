@@ -546,10 +546,21 @@ async function loadUpdates(){
     return;
   }
   try{
-    const{data,error}=await sb.from('updates').select('*').eq('type','credits_purchase').order('created_at',{ascending:false}).limit(8);
-    if(!error&&data){renderUpdates(data);return;}
-  }catch(e){}
-  renderUpdates(localCreditUpdates());
+    const{data,error}=await sb
+      .from('updates')
+      .select('*')
+      .eq('type','credits_purchase')
+      .order('created_at',{ascending:false})
+      .limit(8);
+    if(error)throw error;
+    renderUpdates(data||[]);
+  }catch(e){
+    console.warn('updates:',e);
+    // Když tabulka updates v Supabase neexistuje nebo není veřejně čitelná,
+    // raději box schováme všem. Dřívější localStorage fallback způsobil,
+    // že aktualizaci viděl jen admin na svém zařízení.
+    renderUpdates([]);
+  }
 }
 
 async function addCreditUpdate(username,amount,userId){
@@ -558,8 +569,8 @@ async function addCreditUpdate(username,amount,userId){
     const{error}=await sb.from('updates').insert(item);
     if(error)throw error;
   }catch(e){
-    // Fallback: když v Supabase ještě není tabulka updates, aktualizace zůstane aspoň v prohlížeči admina.
-    saveLocalCreditUpdate(item);
+    console.warn('updates insert:',e);
+    alert('Kredity byly upraveny, ale veřejná aktualizace se neuložila. Zkontroluj prosím v Supabase tabulku „updates“ a práva pro insert/select.');
   }
   if(!isPointsCompetition())await loadUpdates();
 }
