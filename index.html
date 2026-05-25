@@ -37,6 +37,10 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .site-logo span{color:var(--gold)}
 .header-comp{font-size:11px;color:var(--text3);margin-top:1px}
 .hright{display:flex;align-items:center;gap:8px}
+.comp-switch{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;border-radius:20px;padding:5px 28px 5px 12px;max-width:230px;outline:none;cursor:pointer}
+.comp-switch:focus{border-color:var(--gold)}
+.comp-switch option{background:var(--bg2);color:var(--text)}
+@media(max-width:640px){.header-inner{height:auto;gap:8px;flex-wrap:wrap;padding:8px 0}.hright{flex-wrap:wrap;justify-content:flex-end}.comp-switch{order:3;width:100%;max-width:100%}}
 .credits-pill{background:rgba(227,179,65,0.12);border:1px solid rgba(227,179,65,0.3);color:var(--gold);font-size:13px;font-weight:600;padding:5px 14px;border-radius:20px}
 .user-pill{font-size:13px;font-weight:500;color:var(--text);background:var(--bg3);border:1px solid var(--border);padding:5px 12px;border-radius:20px}
 .btn-x{background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;padding:4px;transition:color .15s}
@@ -216,6 +220,7 @@ select:focus{border-color:var(--blue)}
         <div class="header-comp" id="topComp">NHL &amp; Extraliga</div>
       </div>
       <div class="hright">
+        <select class="comp-switch" id="competitionSwitch" onchange="switchCompetition(this.value)" title="Přepnout soutěž" style="display:none"></select>
         <span class="user-pill" id="topName">Hráč</span>
         <span class="credits-pill" id="topCredits">10 000 kr</span>
         <button class="btn-x" onclick="doLogout()" title="Odhlásit">✕</button>
@@ -262,7 +267,7 @@ const SUPABASE_URL='https://yrvfjrrjywvblkolwmnn.supabase.co';
 const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlydmZqcnJqeXd2Ymxrb2x3bW5uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxODk1NjYsImV4cCI6MjA5NDc2NTU2Nn0.tTNAjYnWoXVFqiQoMdxJPYO3CXup-JBmfvs08IWDK3Y';
 const ADMIN_USERNAME='Dany';
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
-let currentUser=null,currentComp=null,allMatches=[],allTips=[];
+let currentUser=null,currentComp=null,allActiveComps=[],allMatches=[],allTips=[];
 const pending={};
 
 window.addEventListener('load',async()=>{
@@ -338,8 +343,42 @@ async function updateCreditsDisplay(){
 }
 
 async function loadActiveComp(){
-  const{data}=await sb.from('competitions').select('*').eq('active',true).order('created_at',{ascending:false}).limit(1);
-  if(data&&data.length>0){currentComp=data[0];document.getElementById('topComp').textContent=currentComp.name;}
+  const{data,error}=await sb.from('competitions').select('*').eq('active',true).order('created_at',{ascending:false});
+  if(error){console.warn('competitions:',error);return;}
+  allActiveComps=data||[];
+  const savedId=localStorage.getItem('tip_competition_id');
+  currentComp=allActiveComps.find(c=>c.id===savedId)||allActiveComps[0]||null;
+  renderCompetitionSwitch();
+}
+
+function renderCompetitionSwitch(){
+  const top=document.getElementById('topComp');
+  const sel=document.getElementById('competitionSwitch');
+  if(!top)return;
+  top.textContent=currentComp?currentComp.name:'Žádná aktivní soutěž';
+  if(!sel)return;
+  if(!allActiveComps||allActiveComps.length<2){sel.style.display='none';sel.innerHTML='';return;}
+  sel.innerHTML=allActiveComps.map(c=>`<option value="${c.id}" ${currentComp&&c.id===currentComp.id?'selected':''}>${escapeHTML(c.name)} · ${isPointsCompetition(c)?'body':'kredity'}</option>`).join('');
+  sel.style.display='inline-block';
+}
+
+async function switchCompetition(id){
+  const selected=allActiveComps.find(c=>c.id===id);
+  if(!selected)return;
+  currentComp=selected;
+  localStorage.setItem('tip_competition_id',id);
+  renderCompetitionSwitch();
+  await settleWinnings();
+  await updateCreditsDisplay();
+  await loadUpdates();
+  await renderMatches();
+  loadTicker();
+  const visibleAdmin=document.getElementById('tab-admin')?.style.display!=='none';
+  const visibleTips=document.getElementById('tab-mytips')?.style.display!=='none';
+  const visibleLb=document.getElementById('tab-leaderboard')?.style.display!=='none';
+  if(visibleAdmin)renderAdmin();
+  if(visibleTips)renderMyTips();
+  if(visibleLb)renderLeaderboard();
 }
 
 
@@ -381,8 +420,18 @@ function switchTab(name,btn){
 async function loadTicker(){
   try{
     const{data:users}=await sb.from('users').select('*');
-    const{data:doneMatches}=await sb.from('matches').select('*').eq('status','done').order('match_date',{ascending:false});
-    const sorted=(users||[]).sort((a,b)=>b.credits-a.credits);
+    let doneQuery=sb.from('matches').select('*').eq('status','done').order('match_date',{ascending:false});
+    if(currentComp)doneQuery=doneQuery.eq('competition_id',currentComp.id);
+    const{data:doneMatches}=await doneQuery;
+    let sorted=(users||[]).sort((a,b)=>b.credits-a.credits);
+    if(isPointsCompetition()&&currentComp){
+      const{data:compMatches}=await sb.from('matches').select('id').eq('competition_id',currentComp.id);
+      const compIds=(compMatches||[]).map(m=>m.id);
+      const{data:allSettledTips}=compIds.length?await sb.from('tips').select('user_id,winnings,settled').eq('settled',true).in('match_id',compIds):{data:[]};
+      const pts={};
+      (allSettledTips||[]).forEach(t=>{pts[t.user_id]=(pts[t.user_id]||0)+(Number(t.winnings)||0);});
+      sorted=(users||[]).map(u=>({...u,_points:pts[u.id]||0})).sort((a,b)=>b._points-a._points);
+    }
     const leader=sorted[0];
     const second=sorted[1];
 
@@ -419,10 +468,11 @@ async function loadTicker(){
     }
 
     let items='';
-    if(leader) items+=`<span class="t-item">🏆 <span class="lbl">Lídr žebříčku:</span> <strong>${leader.username}</strong> <span class="hi">${leader.credits.toLocaleString('cs-CZ')} kr</span></span><span class="t-div">·</span>`;
-    if(second) items+=`<span class="t-item">🥈 <strong>${second.username}</strong> ${second.credits.toLocaleString('cs-CZ')} kr</span><span class="t-div">·</span>`;
+    const tickerPointsMode=isPointsCompetition();
+    if(leader) items+=`<span class="t-item">🏆 <span class="lbl">Lídr žebříčku:</span> <strong>${leader.username}</strong> <span class="hi">${tickerPointsMode?Math.round(leader._points||0).toLocaleString('cs-CZ')+' bodů':leader.credits.toLocaleString('cs-CZ')+' kr'}</span></span><span class="t-div">·</span>`;
+    if(second) items+=`<span class="t-item">🥈 <strong>${second.username}</strong> ${tickerPointsMode?Math.round(second._points||0).toLocaleString('cs-CZ')+' bodů':second.credits.toLocaleString('cs-CZ')+' kr'}</span><span class="t-div">·</span>`;
     if(lastMatch) items+=`<span class="t-item">🏒 <span class="lbl">Poslední zápas:</span> <strong>${lastMatch.home} – ${lastMatch.away}</strong> ${lastMatch.result_home}:${lastMatch.result_away}</span><span class="t-div">·</span>`;
-    if(lastWin) items+=`<span class="t-item">💰 <span class="lbl">Výhra kola:</span> <strong>${lastWinUser?.username||'–'}</strong> <span class="pos">+${lastWin.winnings.toLocaleString('cs-CZ')} kr</span></span><span class="t-div">·</span>`;
+    if(lastWin) items+=`<span class="t-item">💰 <span class="lbl">${tickerPointsMode?'Body kola':'Výhra kola'}:</span> <strong>${lastWinUser?.username||'–'}</strong> <span class="pos">+${Number(lastWin.winnings||0).toLocaleString('cs-CZ')} ${tickerPointsMode?'bodů':'kr'}</span></span><span class="t-div">·</span>`;
     if(lastBigOdds&&lastBigOdds.odds>1.3) items+=`<span class="t-item">🎯 <span class="lbl">Kurz kola:</span> <strong>${lastBigOddsUser?.username||'–'}</strong> <span class="hi">${lastBigOdds.odds.toFixed(2)}×</span></span><span class="t-div">·</span>`;
     if(lastLoss&&lastLoss.stake>100) items+=`<span class="t-item">📉 <span class="lbl">Prohra kola:</span> <strong>${lastLossUser?.username||'–'}</strong> <span class="neg">−${lastLoss.stake.toLocaleString('cs-CZ')} kr</span></span><span class="t-div">·</span>`;
 
@@ -875,7 +925,7 @@ async function renderLeaderboard(){
   }
   const START_CREDITS=10000;
   const ranked=(users||[]).map(u=>{
-    const mt=(tips||[]).filter(t=>t.user_id===u.id&&(pointsMode?compMatchIds.includes(t.match_id):true));
+    const mt=(tips||[]).filter(t=>t.user_id===u.id&&(!currentComp||compMatchIds.includes(t.match_id)));
     const settled=mt.filter(t=>t.settled);
     const pending=Math.max(0,mt.length-settled.length);
     if(pointsMode){
@@ -951,7 +1001,7 @@ async function renderAdmin(){
     <div class="field"><label>Sezóna</label><input type="text" id="compSeason" placeholder="2025/26"></div>
     <button class="btn-a btn-g" onclick="createComp()" style="width:100%">Vytvořit soutěž</button>
   </div><div class="admin-box"><h3>Soutěže</h3>`;
-  if(comps&&comps.length){comps.forEach(c=>{html+=`<div class="comp-item"><span style="flex:1;font-weight:500;color:var(--text)">${c.name} · ${c.league} · ${isPointsCompetition(c)?'body':'kredity'}</span>${c.active?'<span class="comp-active">Aktivní</span>':`<button class="btn-a" style="font-size:11px;padding:3px 10px" onclick="activateComp('${c.id}')">Aktivovat</button>`}</div>`;});}
+  if(comps&&comps.length){comps.forEach(c=>{html+=`<div class="comp-item"><span style="flex:1;font-weight:500;color:var(--text)">${c.name} · ${c.league} · ${isPointsCompetition(c)?'body':'kredity'}</span>${c.active?`<span class="comp-active">Aktivní</span><button class="btn-a" style="font-size:11px;padding:3px 10px;background:#5c1f1f" onclick="deactivateComp('${c.id}')">Skrýt</button>`:`<button class="btn-a" style="font-size:11px;padding:3px 10px" onclick="activateComp('${c.id}')">Aktivovat</button>`}</div>`;});}
   else html+='<div class="empty">Žádné soutěže</div>';
   html+='</div>';
 
@@ -1098,7 +1148,6 @@ async function createComp(){
   const season=document.getElementById('compSeason').value.trim();
   const scoring_mode=document.getElementById('compScoringMode')?.value||'credits';
   if(!name||!season){alert('Vyplň název a sezónu.');return;}
-  await sb.from('competitions').update({active:false}).neq('id','00000000-0000-0000-0000-000000000000');
   let payload={name,league,season,active:true,scoring_mode};
   let{data,error}=await sb.from('competitions').insert(payload).select().single();
   // Když v databázi ještě není sloupec scoring_mode, soutěž se vytvoří i bez něj.
@@ -1107,14 +1156,27 @@ async function createComp(){
     ({data,error}=await sb.from('competitions').insert({name,league,season,active:true}).select().single());
   }
   if(error){alert('Soutěž se nepodařilo vytvořit: '+error.message);return;}
-  if(data){currentComp=data;alert('Soutěž vytvořena!');renderAdmin();renderMatches();}
+  if(data){currentComp=data;localStorage.setItem('tip_competition_id',data.id);await loadActiveComp();await updateCreditsDisplay();alert('Soutěž vytvořena!');renderAdmin();renderMatches();loadTicker();}
 }
 
 async function activateComp(id){
-  await sb.from('competitions').update({active:false}).neq('id','00000000-0000-0000-0000-000000000000');
-  await sb.from('competitions').update({active:true}).eq('id',id);
+  const{error}=await sb.from('competitions').update({active:true}).eq('id',id);
+  if(error){alert('Soutěž se nepodařilo aktivovat: '+error.message);return;}
   const{data}=await sb.from('competitions').select('*').eq('id',id).single();
-  if(data){currentComp=data;alert('Soutěž aktivována!');renderAdmin();renderMatches();}
+  if(data){currentComp=data;localStorage.setItem('tip_competition_id',id);await loadActiveComp();await updateCreditsDisplay();alert('Soutěž je aktivní. Ostatní aktivní soutěže zůstaly zapnuté.');renderAdmin();renderMatches();loadTicker();}
+}
+
+async function deactivateComp(id){
+  if(currentComp&&currentComp.id===id&&allActiveComps.length<=1){alert('Nech zapnutou alespoň jednu aktivní soutěž.');return;}
+  if(!confirm('Skrýt soutěž z přepínače? Zápasy ani tipy se nesmažou.'))return;
+  const{error}=await sb.from('competitions').update({active:false}).eq('id',id);
+  if(error){alert('Soutěž se nepodařilo skrýt: '+error.message);return;}
+  if(currentComp&&currentComp.id===id)localStorage.removeItem('tip_competition_id');
+  await loadActiveComp();
+  await updateCreditsDisplay();
+  renderAdmin();
+  renderMatches();
+  loadTicker();
 }
 
 async function addMatch(){
