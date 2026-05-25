@@ -612,6 +612,15 @@ function isMatchOlderThanDays(match,days=2){
   return d.getTime() < Date.now() - days*24*60*60*1000;
 }
 
+
+function isMatchTodayOrFuture(match){
+  const d=parseMatchDate(match?.match_date);
+  if(!d)return true; // když datum nejde přečíst, raději zápas adminovi necháme vidět
+  const today=new Date();
+  today.setHours(0,0,0,0);
+  return d.getTime() >= today.getTime();
+}
+
 function isMatchLocked(match){
   if(!match)return false;
   if(match.status==='done'||match.status==='live')return true;
@@ -934,6 +943,7 @@ async function renderAdmin(){
   const comps=compsResp.data||[];
   const users=usersResp.data||[];
   const matches=matchesResp.data||[];
+  const visibleAdminMatches=matches.filter(isMatchTodayOrFuture);
   let html=`<div class="admin-box"><h3>Nová soutěž</h3>
     <div class="field"><label>Název</label><input type="text" id="compName" placeholder="NHL Playoff 2026"></div>
     <div class="field"><label>Liga</label><select id="compLeague" onchange="setCompetitionPreset()"><option value="nhl">NHL</option><option value="extraliga">Česká extraliga</option><option value="Mistrovství světa">Mistrovství světa</option></select></div>
@@ -975,9 +985,9 @@ async function renderAdmin(){
       <button class="btn-a btn-g" onclick="addMatch()" style="width:100%">Přidat zápas</button>
     </div>`;
 
-    if((matches||[]).length){
-      html+='<div class="admin-box"><h3>Přehled zápasů</h3><div style="color:var(--text3);font-size:12px;margin-bottom:10px;line-height:1.4">Duplicitní nebo chybně založený zápas smažeš křížkem. Smažou se i tipy navázané na daný zápas.</div>';
-      (matches||[]).forEach(m=>{
+    if((visibleAdminMatches||[]).length){
+      html+='<div class="admin-box"><h3>Přehled zápasů</h3><div style="color:var(--text3);font-size:12px;margin-bottom:10px;line-height:1.4">Zobrazuji jen dnešní a následující zápasy. Duplicitní nebo chybně založený zápas smažeš křížkem. Smažou se i tipy navázané na daný zápas.</div>';
+      (visibleAdminMatches||[]).forEach(m=>{
         const statusLabel=m.status==='done'?'Ukončeno':isMatchLocked(m)?'Zamčeno':'Brzy';
         const statusColor=m.status==='done'?'var(--green)':isMatchLocked(m)?'var(--red)':'var(--gold)';
         html+=`<div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;display:flex;gap:10px;align-items:center">
@@ -991,7 +1001,7 @@ async function renderAdmin(){
       html+='</div>';
     }
     if(!pointsMode){
-      const oddsMatches=(matches||[]).filter(m=>m.status!=='done');
+      const oddsMatches=(visibleAdminMatches||[]).filter(m=>m.status!=='done');
       if(oddsMatches.length){
         html+='<div class="admin-box"><h3>Upravit kurzy ručně</h3><div style="color:var(--text3);font-size:12px;margin-bottom:10px;line-height:1.4">Kurzy se ukládají přímo k zápasu. Pozor: při vyhodnocení se použijí aktuálně uložené kurzy.</div>';
         oddsMatches.forEach(m=>{
@@ -1018,7 +1028,7 @@ async function renderAdmin(){
       }
     }
 
-    const pend=(matches||[]).filter(m=>m.status!=='done');
+    const pend=(visibleAdminMatches||[]).filter(m=>m.status!=='done');
     if(pend.length){
       html+='<div class="admin-box"><h3>Zadat výsledky</h3>';
       pend.forEach(m=>{
