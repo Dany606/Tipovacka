@@ -531,7 +531,7 @@ function renderUpdates(items,localOnly=false){
   const rows=(items||[]).slice(0,3);
   if(!rows.length){box.style.display='none';return;}
   const warning=(localOnly&&currentUser?.username===ADMIN_USERNAME)
-    ? `<div class="update-warning">⚠️ Tyto aktualizace vidíš jen ty v tomto prohlížeči. Nejsou uložené veřejně v Supabase, takže je ostatní hráči neuvidí.</div>`
+    ? ''
     : '';
   list.innerHTML=warning+rows.map(u=>{
     const created=u.created_at||u.createdAt||new Date().toISOString();
