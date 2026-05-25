@@ -245,7 +245,6 @@ select:focus{border-color:var(--blue)}
         <div class="rule">🚫 Bankrot: <strong>0 kr = konec</strong></div>
       </div>
       <div class="rules-note"><b>Výsledek základní doby (1X2)</b> — výhra = sázka × kurz &nbsp;·&nbsp; <b>Vítěz vč. prod./náj.</b> — výhra = sázka × kurz vítěze</div>
-      <div class="rules-note"><b>Bodová soutěž bez kurzů</b> — hráč tipuje přesný výsledek včetně prodloužení/nájezdů. Za zápas lze získat maximálně <b>5 bodů</b>. Pokud hráč trefí přesný výsledek, získá rovnou <b>+5 bodů</b> a další body se už nepřičítají. Pokud přesný výsledek netrefí, počítá se: správný vítěz <b>+1 bod</b>, přesný počet gólů domácího týmu <b>+1 bod</b>, přesný počet gólů hostujícího týmu <b>+1 bod</b>, špatný tip <b>0 bodů</b>.</div>
     </div>
     <div class="updates-box" id="updatesBox" style="display:none">
       <h3>📝 Aktualizace</h3>
@@ -314,40 +313,98 @@ async function openMain(){
   await renderMatches();
 }
 
-function updateCreditsDisplay(){
-  document.getElementById('topCredits').textContent=currentUser.credits.toLocaleString('cs-CZ')+' kr';
+function isPointCompetition(comp=currentComp){
+  if(!comp)return false;
+  const raw=[
+    comp.scoring_type,
+    comp.score_mode,
+    comp.mode,
+    comp.type,
+    comp.rules_type,
+    comp.league,
+    comp.name
+  ].filter(Boolean).join(' ').toLowerCase();
+  return raw.includes('point')||raw.includes('bod')||raw.includes('mistrovství')||raw.includes('mistrovstvi')||raw.includes('ms');
+}
+
+function getTipScore(tip){
+  const h=Number(tip.score_home ?? tip.home_score ?? tip.pred_home ?? tip.predicted_home);
+  const a=Number(tip.score_away ?? tip.away_score ?? tip.pred_away ?? tip.predicted_away);
+  if(Number.isFinite(h)&&Number.isFinite(a))return{home:h,away:a};
+  if(tip.goals){
+    try{
+      const g=typeof tip.goals==='string'?JSON.parse(tip.goals):tip.goals;
+      const gh=Number(g.home ?? g.h ?? g.score_home);
+      const ga=Number(g.away ?? g.a ?? g.score_away);
+      if(Number.isFinite(gh)&&Number.isFinite(ga))return{home:gh,away:ga};
+    }catch(e){}
+  }
+  return null;
+}
+
+function getWinnerFromScore(home,away){
+  if(home>away)return'home';
+  if(away>home)return'away';
+  return'draw';
+}
+
+function calcPointTip(match,tip){
+  if(!match||!tip||match.status!=='done'||match.result_home===null||match.result_away===null)return null;
+  const s=getTipScore(tip);
+  if(!s)return 0;
+
+  const realHome=Number(match.result_home);
+  const realAway=Number(match.result_away);
+
+  // Maximum je 5 bodů. Přesný výsledek rovnou dává 5 bodů a další body se nepřičítají.
+  if(s.home===realHome&&s.away===realAway)return 5;
+
+  let points=0;
+  if(getWinnerFromScore(s.home,s.away)===getWinnerFromScore(realHome,realAway))points+=1;
+  if(s.home===realHome)points+=1;
+  if(s.away===realAway)points+=1;
+  return points;
+}
+
+async function getCurrentUserCompetitionPoints(){
+  if(!currentUser||!currentComp)return 0;
+  const{data:matches}=await sb.from('matches').select('*').eq('competition_id',currentComp.id).eq('status','done');
+  if(!matches||!matches.length)return 0;
+  const matchIds=matches.map(m=>m.id);
+  const{data:tips}=await sb.from('tips').select('*').eq('user_id',currentUser.id).in('match_id',matchIds);
+  if(!tips||!tips.length)return 0;
+
+  let total=0;
+  tips.forEach(t=>{
+    const m=matches.find(x=>x.id===t.match_id);
+    const pts=calcPointTip(m,t);
+    if(pts!==null)total+=pts;
+  });
+  return total;
+}
+
+async function updateCreditsDisplay(){
+  const el=document.getElementById('topCredits');
+  if(!el||!currentUser)return;
+
+  if(isPointCompetition()){
+    el.textContent='… bodů';
+    try{
+      const points=await getCurrentUserCompetitionPoints();
+      el.textContent=points.toLocaleString('cs-CZ')+' bodů';
+    }catch(e){
+      console.warn('points display:',e);
+      el.textContent='0 bodů';
+    }
+    return;
+  }
+
+  el.textContent=Number(currentUser.credits||0).toLocaleString('cs-CZ')+' kr';
 }
 
 async function loadActiveComp(){
   const{data}=await sb.from('competitions').select('*').eq('active',true).order('created_at',{ascending:false}).limit(1);
   if(data&&data.length>0){currentComp=data[0];document.getElementById('topComp').textContent=currentComp.name;}
-}
-
-
-function isPointsCompetition(comp=currentComp){
-  if(!comp)return false;
-  const league=String(comp.league||'').toLowerCase();
-  const mode=String(comp.scoring_mode||comp.type||'').toLowerCase();
-  return mode==='points'||mode==='bodova'||mode==='bodová'||league.includes('mistrovství')||league.includes('mistrovstvi');
-}
-
-function pointsLabel(){return 'Bodová soutěž bez kurzů';}
-
-function evaluatePointsTip(match,tip){
-  if(match.result_home===null||match.result_home===undefined)return null;
-  if(match.result_away===null||match.result_away===undefined)return null;
-  const rh=Number(match.result_home),ra=Number(match.result_away);
-  const th=Number(tip.score_home),ta=Number(tip.score_away);
-  if(Number.isNaN(th)||Number.isNaN(ta))return null;
-  // Max. 5 bodů za zápas. Přesný výsledek má vždy přednost a dál se už nepřičítá.
-  if(th===rh&&ta===ra)return 5;
-  let points=0;
-  const actualWinner=rh>ra?'home':rh<ra?'away':'draw';
-  const tipWinner=th>ta?'home':th<ta?'away':'draw';
-  if(tipWinner===actualWinner)points+=1;                 // správný vítěz včetně prodloužení/nájezdů
-  if(th===rh)points+=1;                                  // přesný počet gólů domácích
-  if(ta===ra)points+=1;                                  // přesný počet gólů hostů
-  return Math.min(points,5);
 }
 
 function switchTab(name,btn){
@@ -476,25 +533,12 @@ async function settleWinnings(){
   const{data:matches}=await sb.from('matches').select('*').eq('competition_id',currentComp.id).eq('status','done');
   if(!matches||!matches.length)return;
 
+  // Vyhodnocení musí proběhnout pro všechny hráče, ne jen pro právě přihlášeného.
+  // Vklad se odečítá už při podání tipu, takže u výherního tipu se zpět připíše CELÁ výplata = vklad × kurz.
   const matchIds=matches.map(m=>m.id);
   const{data:tips}=await sb.from('tips').select('*').in('match_id',matchIds);
   if(!tips||!tips.length)return;
 
-  // Bodové soutěže (např. Mistrovství světa) nepřipisují kredity.
-  // Do tips.winnings ukládáme počet bodů, aby šel jednoduše zobrazit žebříček.
-  if(isPointsCompetition()){
-    for(const tip of tips){
-      const match=matches.find(m=>m.id===tip.match_id);if(!match)continue;
-      const points=evaluatePointsTip(match,tip);if(points===null)continue;
-      const currentPoints=Number(tip.winnings||0);
-      const update={settled:true,winnings:points};
-      if(!tip.settled||currentPoints!==points)await sb.from('tips').update(update).eq('id',tip.id);
-    }
-    return;
-  }
-
-  // Kreditové soutěže: vklad se odečítá už při podání tipu,
-  // takže u výherního tipu se zpět připíše CELÁ výplata = vklad × kurz.
   const adjustments={};
   for(const tip of tips){
     const match=matches.find(m=>m.id===tip.match_id);if(!match)continue;
@@ -502,6 +546,7 @@ async function settleWinnings(){
     const winnings=result>0?Math.round(result):0;
     const currentWinnings=Number(tip.winnings||0);
 
+    // Nepřičítat znovu už vyplacené stejné výhry. Jen dopočítat rozdíl, pokud byla dřív uložená špatná částka.
     if(!tip.settled){
       adjustments[tip.user_id]=(adjustments[tip.user_id]||0)+winnings;
       await sb.from('tips').update({settled:true,winnings}).eq('id',tip.id);
@@ -530,7 +575,6 @@ function getWinnerOdds(match,side){
 }
 
 function evaluateTip(match,tip){
-  if(isPointsCompetition())return evaluatePointsTip(match,tip);
   if(match.result_home===null||match.result_home===undefined)return null;
   if(match.result_away===null||match.result_away===undefined)return null;
   const rh=Number(match.result_home),ra=Number(match.result_away);
@@ -611,76 +655,53 @@ async function renderMatches(){
         return new Date() > d;
       } catch(e){ return false; }
     })();
-    const pointsMode=isPointsCompetition();
-    if(!isDone&&!matchStarted){
-      if(pointsMode){
-        const sh=myTip?.score_home??'';
-        const sa=myTip?.score_away??'';
-        html+=`<div class="tip-form">
-          <div class="tip-label">Tip přesného výsledku včetně prodloužení / nájezdů</div>
-          <div class="stake-row" style="justify-content:flex-start;gap:8px">
-            <label>${m.home}</label>
-            <input type="number" class="stake-inp" id="sh_${m.id}" min="0" step="1" value="${sh}" placeholder="0" style="width:70px;text-align:center">
-            <span class="stake-unit">:</span>
-            <input type="number" class="stake-inp" id="sa_${m.id}" min="0" step="1" value="${sa}" placeholder="0" style="width:70px;text-align:center">
-            <label>${m.away}</label>
-          </div>
-          <div style="font-size:12px;color:var(--text3);padding:0 1rem 10px">Bodování: max. 5 bodů za zápas. Přesný výsledek = 5 bodů a dál se nepřičítá; jinak vítěz +1, góly domácích +1, góly hostů +1.</div>
-          <button class="btn-tip" onclick="placeTip('${m.id}')" id="tipBtn_${m.id}">${myTip?'✓ Aktualizovat tip':'Potvrdit tip →'}</button>
-        </div>`;
-      }else if(m.odds_home){
-        const sel=pending[m.id]?.outcome||myTip?.outcome||'';
-        const selDec=pending[m.id]?.decision||myTip?.decision||'';
-        const stakeVal=myTip?.stake||500;
-        const ro=m.regulation_odds||{};
-        const oh=ro.home||(parseFloat(m.odds_home)*0.92).toFixed(2);
-        const oa=ro.away||(parseFloat(m.odds_away)*0.92).toFixed(2);
-        html+=`<div class="tip-form">
-          <div class="tip-label">Výsledek základní hrací doby</div>
-          <div class="odds-3">
-            <button class="odd-btn ${sel==='home'?'sel':''}" onclick="selOpt('${m.id}','outcome','home',this)"><div class="on">${m.home}</div><div class="ov">${parseFloat(m.odds_home).toFixed(2)}</div></button>
-            <button class="odd-btn ${sel==='draw'?'sel':''}" onclick="selOpt('${m.id}','outcome','draw',this)"><div class="on">Remíza</div><div class="ov">${parseFloat(m.odds_draw).toFixed(2)}</div></button>
-            <button class="odd-btn ${sel==='away'?'sel':''}" onclick="selOpt('${m.id}','outcome','away',this)"><div class="on">${m.away}</div><div class="ov">${parseFloat(m.odds_away).toFixed(2)}</div></button>
-          </div>
-          <div class="tip-label">Vítěz včetně prodloužení / nájezdů</div>
-          <div class="odds-2">
-            <button class="odd-btn ${selDec==='home'?'sel':''}" onclick="selOpt('${m.id}','decision','home',this)"><div class="on">${m.home}</div><div class="ov">${parseFloat(oh).toFixed(2)}</div></button>
-            <button class="odd-btn ${selDec==='away'?'sel':''}" onclick="selOpt('${m.id}','decision','away',this)"><div class="on">${m.away}</div><div class="ov">${parseFloat(oa).toFixed(2)}</div></button>
-          </div>
-          <div class="stake-row">
-            <label>Sázka</label>
-            <input type="number" class="stake-inp" id="st_${m.id}" min="100" step="100" value="${stakeVal}" oninput="updatePotential('${m.id}')">
-            <span class="stake-unit">kr</span>
-            <span class="potential" id="pot_${m.id}"></span>
-          </div>
-          <button class="btn-tip" onclick="placeTip('${m.id}')" id="tipBtn_${m.id}">${myTip?'✓ Aktualizovat tip':'Potvrdit tip →'}</button>
-        </div>`;
-      }
-    }else if(!isDone&&matchStarted){
+    if(!isDone&&m.odds_home&&!matchStarted){
+      const sel=pending[m.id]?.outcome||myTip?.outcome||'';
+      const selDec=pending[m.id]?.decision||myTip?.decision||'';
+      const stakeVal=myTip?.stake||500;
+      const ro=m.regulation_odds||{};
+      const oh=ro.home||(parseFloat(m.odds_home)*0.92).toFixed(2);
+      const oa=ro.away||(parseFloat(m.odds_away)*0.92).toFixed(2);
+      html+=`<div class="tip-form">
+        <div class="tip-label">Výsledek základní hrací doby</div>
+        <div class="odds-3">
+          <button class="odd-btn ${sel==='home'?'sel':''}" onclick="selOpt('${m.id}','outcome','home',this)"><div class="on">${m.home}</div><div class="ov">${parseFloat(m.odds_home).toFixed(2)}</div></button>
+          <button class="odd-btn ${sel==='draw'?'sel':''}" onclick="selOpt('${m.id}','outcome','draw',this)"><div class="on">Remíza</div><div class="ov">${parseFloat(m.odds_draw).toFixed(2)}</div></button>
+          <button class="odd-btn ${sel==='away'?'sel':''}" onclick="selOpt('${m.id}','outcome','away',this)"><div class="on">${m.away}</div><div class="ov">${parseFloat(m.odds_away).toFixed(2)}</div></button>
+        </div>
+        <div class="tip-label">Vítěz včetně prodloužení / nájezdů</div>
+        <div class="odds-2">
+          <button class="odd-btn ${selDec==='home'?'sel':''}" onclick="selOpt('${m.id}','decision','home',this)"><div class="on">${m.home}</div><div class="ov">${parseFloat(oh).toFixed(2)}</div></button>
+          <button class="odd-btn ${selDec==='away'?'sel':''}" onclick="selOpt('${m.id}','decision','away',this)"><div class="on">${m.away}</div><div class="ov">${parseFloat(oa).toFixed(2)}</div></button>
+        </div>
+        <div class="stake-row">
+          <label>Sázka</label>
+          <input type="number" class="stake-inp" id="st_${m.id}" min="100" step="100" value="${stakeVal}" oninput="updatePotential('${m.id}')">
+          <span class="stake-unit">kr</span>
+          <span class="potential" id="pot_${m.id}"></span>
+        </div>
+        <button class="btn-tip" onclick="placeTip('${m.id}')" id="tipBtn_${m.id}">${myTip?'✓ Aktualizovat tip':'Potvrdit tip →'}</button>
+      </div>`;
+    }else if(!isDone&&m.odds_home&&matchStarted){
       html+=`<div style="padding:0.75rem 1rem;background:rgba(248,81,73,0.08);border-top:1px solid rgba(248,81,73,0.2);font-size:12px;color:var(--red);display:flex;align-items:center;gap:6px">🔒 Zápas již začal — tipování uzavřeno</div>`;
       if(myTip){
-        if(pointsMode){
-          html+=`<div class="tip-result"><span>Tvůj tip: <strong>${myTip.score_home}:${myTip.score_away}</strong></span><span class="b-wait">⏳ Čeká na výsledek</span></div>`;
-        }else{
-          const inf=myTip.outcome||myTip.decision;
-          const outLbl=inf==='home'?m.home:inf==='away'?m.away:'Remíza';
-          html+=`<div class="tip-result"><span>Tvůj tip: <strong>${outLbl}</strong> · ${myTip.stake?.toLocaleString('cs-CZ')} kr</span><span class="b-wait">⏳ Čeká na výsledek</span></div>`;
-        }
-      }
-    }else if(isDone&&myTip){
-      const res=evaluateTip(m,myTip);
-      if(pointsMode){
-        html+=`<div class="tip-result"><span>Tvůj tip: <strong>${myTip.score_home}:${myTip.score_away}</strong></span>${res===null?'<span class="b-wait">⏳ Čeká</span>':res>0?`<span class="b-won">✓ +${Math.round(res)} bodů</span>`:'<span class="b-lost">0 bodů</span>'}</div>`;
-      }else{
+        const res=evaluateTip(m,myTip);
         const inf=myTip.outcome||myTip.decision;
         const outLbl=inf==='home'?m.home:inf==='away'?m.away:'Remíza';
-        html+=`<div class="tip-result"><span>Tvůj tip: <strong>${outLbl}</strong> · ${myTip.stake?.toLocaleString('cs-CZ')} kr</span>${res===null?'<span class="b-wait">⏳ Čeká</span>':res>0?`<span class="b-won">✓ +${Math.round(res).toLocaleString('cs-CZ')} kr</span>`:'<span class="b-lost">✗ Prohra</span>'}</div>`;
+        html+=`<div class="tip-result"><span>Tvůj tip: <strong>${outLbl}</strong> · ${myTip.stake?.toLocaleString('cs-CZ')} kr</span><span class="b-wait">⏳ Čeká na výsledek</span></div>`;
       }
+    }else if(!isDone&&m.odds_home&&matchStarted&&!myTip){
+      html+=`<div style="padding:0.75rem 1rem;background:rgba(248,81,73,0.08);border-top:1px solid rgba(248,81,73,0.2);font-size:12px;color:var(--red);display:flex;align-items:center;gap:6px">🔒 Zápas již začal — tipování uzavřeno</div>`;
+    }else if(isDone&&myTip){
+      const res=evaluateTip(m,myTip);
+      const inf=myTip.outcome||myTip.decision;
+      const outLbl=inf==='home'?m.home:inf==='away'?m.away:'Remíza';
+      html+=`<div class="tip-result"><span>Tvůj tip: <strong>${outLbl}</strong> · ${myTip.stake?.toLocaleString('cs-CZ')} kr</span>${res===null?'<span class="b-wait">⏳ Čeká</span>':res>0?`<span class="b-won">✓ +${Math.round(res).toLocaleString('cs-CZ')} kr</span>`:'<span class="b-lost">✗ Prohra</span>'}</div>`;
     }
     html+='</div>';
   });
   el.innerHTML=html;
-  if(!isPointsCompetition())allMatches.forEach(m=>{if(m.status!=='done')updatePotential(m.id);});
+  allMatches.forEach(m=>{if(m.status!=='done')updatePotential(m.id);});
 }
 
 function selOpt(mid,key,val,btn){
@@ -716,27 +737,13 @@ function updatePotential(mid){
 }
 
 async function placeTip(mid){
-  const pointsMode=isPointsCompetition();
+  const stake=parseInt(document.getElementById('st_'+mid)?.value||0);
+  if(!stake||stake<100){alert('Minimální sázka je 100 kreditů.');return;}
+  if(stake>currentUser.credits){alert('Nedostatek kreditů!');return;}
+  const p=pending[mid]||{};
   const existing=allTips.find(t=>t.match_id===mid);
   const btn=document.getElementById('tipBtn_'+mid);
   btn.disabled=true;btn.textContent='Ukládám...';
-
-  if(pointsMode){
-    const scoreHome=parseInt(document.getElementById('sh_'+mid)?.value,10);
-    const scoreAway=parseInt(document.getElementById('sa_'+mid)?.value,10);
-    if(isNaN(scoreHome)||isNaN(scoreAway)||scoreHome<0||scoreAway<0){alert('Zadej platný přesný výsledek.');btn.disabled=false;btn.textContent=existing?'✓ Aktualizovat tip':'Potvrdit tip →';return;}
-    const tipData={user_id:currentUser.id,match_id:mid,outcome:null,decision:null,goals:null,score_home:scoreHome,score_away:scoreAway,stake:0,settled:false,winnings:0};
-    if(existing){await sb.from('tips').update(tipData).eq('id',existing.id);const idx=allTips.findIndex(t=>t.match_id===mid);allTips[idx]={...existing,...tipData};}
-    else{const{data}=await sb.from('tips').insert(tipData).select().single();if(data)allTips.push(data);}
-    btn.disabled=false;btn.textContent='✓ Uloženo!';
-    setTimeout(()=>{btn.textContent='✓ Aktualizovat tip';btn.disabled=false;},2000);
-    return;
-  }
-
-  const stake=parseInt(document.getElementById('st_'+mid)?.value||0);
-  if(!stake||stake<100){alert('Minimální sázka je 100 kreditů.');btn.disabled=false;btn.textContent=existing?'✓ Aktualizovat tip':'Potvrdit tip →';return;}
-  if(stake>currentUser.credits){alert('Nedostatek kreditů!');btn.disabled=false;btn.textContent=existing?'✓ Aktualizovat tip':'Potvrdit tip →';return;}
-  const p=pending[mid]||{};
   let nc=currentUser.credits;
   if(existing)nc+=existing.stake;
   nc-=stake;
@@ -765,50 +772,38 @@ async function renderMyTips(){
   const el=document.getElementById('myTipsList');
   el.innerHTML='<div class="loading"><div class="spin"></div><br>Načítám...</div>';
   if(!currentComp){el.innerHTML='<div class="empty">Žádná aktivní soutěž.</div>';return;}
-  const pointsMode=isPointsCompetition();
   const{data:matches}=await sb.from('matches').select('*').eq('competition_id',currentComp.id).order('match_date',{ascending:false});
   const{data:tips}=await sb.from('tips').select('*').eq('user_id',currentUser.id);
   if(!tips||!tips.length){el.innerHTML='<div class="empty">Zatím žádné tipy. Jdi tipovat! 🏒</div>';return;}
-  let total=0;
+  let totalWon=0;
   let hasTipWithMatch=false;
   let html='<div class="sec-title">Moje tipy</div><div class="lb-table">';
   tips.forEach(t=>{
     const m=(matches||[]).find(x=>x.id===t.match_id);if(!m)return;
     hasTipWithMatch=true;
-    const res=evaluateTip(m,t);if(res>0)total+=res;
+    const res=evaluateTip(m,t);if(res>0)totalWon+=res;
+    const inf=t.outcome||t.decision;
+    const outLbl=inf==='home'?m.home:inf==='away'?m.away:inf==='draw'?'Remíza':'–';
     const isDone=m.status==='done';
     const resultStr=isDone&&m.result_home!==null?`${m.result_home}:${m.result_away} (${m.decision==='reg'?'reg.':m.decision==='ot'?'prod.':'náj.'})`:null;
-    let tipLine='';
-    let resultBadge='';
-    if(pointsMode){
-      tipLine=`<span style="font-size:12px;color:var(--text2)">Tip: <strong style="color:var(--text)">${t.score_home}:${t.score_away}</strong></span><span style="font-size:11px;color:var(--text3)">přesný výsledek</span>`;
-      resultBadge=res===null?'<span class="b-wait">⏳ Čeká</span>':res>0?`<span class="b-won">+${Math.round(res)} bodů</span>`:'<span class="b-lost">0 bodů</span>';
-    }else{
-      const inf=t.outcome||t.decision;
-      const outLbl=inf==='home'?m.home:inf==='away'?m.away:inf==='draw'?'Remíza':'–';
-      const tipTypeLabel=t.decision&&!t.outcome?'vítěz vč. prod.':'výsl. zákl. doby';
-      tipLine=`<span style="font-size:12px;color:var(--text2)">Tip: <strong style="color:var(--text)">${outLbl}</strong></span><span style="font-size:11px;color:var(--text3)">${tipTypeLabel}</span><span style="font-size:12px;color:var(--text3)">· ${t.stake?.toLocaleString('cs-CZ')} kr</span>`;
-      resultBadge=res===null?'<span class="b-wait">⏳ Čeká</span>':res>0?`<span class="b-won">+${Math.round(res).toLocaleString('cs-CZ')} kr</span>`:'<span class="b-lost">✗ Prohra</span>';
-    }
+    const tipTypeLabel=t.decision&&!t.outcome?'vítěz vč. prod.':'výsl. zákl. doby';
     html+=`<div class="tip-row">
       <div style="flex:1;min-width:0">
         <div style="font-weight:600;font-size:13px;color:var(--text);margin-bottom:3px">${m.home} – ${m.away}</div>
         <div style="font-size:12px;color:var(--text3)">${m.match_date}</div>
         <div style="display:flex;gap:8px;margin-top:5px;flex-wrap:wrap;align-items:center">
-          ${tipLine}
+          <span style="font-size:12px;color:var(--text2)">Tip: <strong style="color:var(--text)">${outLbl}</strong></span>
+          <span style="font-size:11px;color:var(--text3)">${tipTypeLabel}</span>
+          <span style="font-size:12px;color:var(--text3)">· ${t.stake?.toLocaleString('cs-CZ')} kr</span>
           ${resultStr?`<span style="font-size:12px;font-weight:600;color:var(--text2)">Výsledek: <strong style="color:var(--text)">${resultStr}</strong></span>`:''}
         </div>
       </div>
-      <div style="margin-left:12px;white-space:nowrap">${resultBadge}</div>
+      <div style="margin-left:12px;white-space:nowrap">${res===null?'<span class="b-wait">⏳ Čeká</span>':res>0?`<span class="b-won">+${Math.round(res).toLocaleString('cs-CZ')} kr</span>`:'<span class="b-lost">✗ Prohra</span>'}</div>
     </div>`;
   });
   html+='</div>';
   if(!hasTipWithMatch){el.innerHTML='<div class="empty">Zatím žádné tipy k této soutěži.</div>';return;}
-  if(total>0){
-    const label=pointsMode?'Celkové body':'Celkové výhry';
-    const value=pointsMode?`+${Math.round(total)} bodů`:`+${Math.round(total).toLocaleString('cs-CZ')} kr`;
-    html=`<div style="background:rgba(63,185,80,.1);border:1px solid #238636;border-radius:var(--radius);padding:10px 14px;margin-bottom:10px;font-size:13px;color:var(--green)">💰 ${label}: <strong>${value}</strong></div>`+html;
-  }
+  if(totalWon>0)html=`<div style="background:rgba(63,185,80,.1);border:1px solid #238636;border-radius:var(--radius);padding:10px 14px;margin-bottom:10px;font-size:13px;color:var(--green)">💰 Celkové výhry: <strong>+${Math.round(totalWon).toLocaleString('cs-CZ')} kr</strong></div>`+html;
   el.innerHTML=html;
 }
 
@@ -817,27 +812,19 @@ async function renderLeaderboard(){
   updateCreditsDisplay();
   const el=document.getElementById('leaderboardContent');
   el.innerHTML='<div class="loading"><div class="spin"></div><br>Načítám...</div>';
-  const pointsMode=isPointsCompetition();
   const{data:users}=await sb.from('users').select('*');
   const{data:tips}=await sb.from('tips').select('*');
-  let compMatchIds=[];
-  if(currentComp){
-    const{data:compMatches}=await sb.from('matches').select('id').eq('competition_id',currentComp.id);
-    compMatchIds=(compMatches||[]).map(m=>m.id);
-  }
-  const START_CREDITS=10000;
+  const START_CREDITS=10000; // počáteční kredity každého hráče
   const ranked=(users||[]).map(u=>{
-    const mt=(tips||[]).filter(t=>t.user_id===u.id&&(pointsMode?compMatchIds.includes(t.match_id):true));
+    const mt=(tips||[]).filter(t=>t.user_id===u.id);
     const settled=mt.filter(t=>t.settled);
-    const pending=Math.max(0,mt.length-settled.length);
-    if(pointsMode){
-      const points=settled.reduce((sum,t)=>sum+(Number(t.winnings)||0),0);
-      return{name:u.username,credits:u.credits,tipCount:mt.length,settledCount:settled.length,pending,points};
-    }
+    const wins=settled.filter(t=>t.winnings>0).length;
+    const losses=settled.filter(t=>t.winnings===0).length;
+    // ROI = (aktuální kredity - počáteční kredity) / počáteční kredity * 100
     const roi=((u.credits-START_CREDITS)/START_CREDITS*100);
     const profit=u.credits-START_CREDITS;
-    return{name:u.username,credits:u.credits,tipCount:mt.length,settledCount:settled.length,pending,roi,profit};
-  }).sort((a,b)=>pointsMode?(b.points-a.points||b.tipCount-a.tipCount):(b.credits-a.credits));
+    return{name:u.username,credits:u.credits,tipCount:mt.length,settledCount:settled.length,wins,losses,roi,profit};
+  }).sort((a,b)=>b.credits-a.credits);
   const medals=['🥇','🥈','🥉'];
   let html=`<div class="sec-title">Celkové pořadí</div><div class="lb-wrap"><table>
     <colgroup>
@@ -851,32 +838,22 @@ async function renderLeaderboard(){
       <th class="lb-rank-cell lb-rank-head">#</th>
       <th>Hráč</th>
       <th class="r">Tipy</th>
-      <th class="r">${pointsMode?'Body':'Kredity'}</th>
-      <th class="r">${pointsMode?'Průměr':'ROI'}</th>
+      <th class="r">Kredity</th>
+      <th class="r">ROI</th>
     </tr></thead><tbody>`;
   ranked.forEach((p,i)=>{
     const isMe=p.name===currentUser.username;
-    if(pointsMode){
-      const avg=p.settledCount?((p.points/p.settledCount).toFixed(1)):'0.0';
-      html+=`<tr class="${isMe?'me':''}">
-        <td class="lb-rank-cell"><span class="lb-rank-badge ${i>2?'lb-rank-num':''}">${medals[i]||i+1}</span></td>
-        <td class="lb-name-cell">${p.name}${isMe?'<span class="lb-me">ty</span>':''}</td>
-        <td class="lb-tips-cell r">${p.tipCount} <span class="lb-pending">(${p.pending} čeká)</span></td>
-        <td class="lb-creds-cell r" style="color:var(--gold)">${p.points} bodů</td>
-        <td class="lb-roi-cell r roi-zero">${avg}</td>
-      </tr>`;
-    }else{
-      const roiCls=p.roi>0?'roi-pos':p.roi<0?'roi-neg':'roi-zero';
-      const roiStr=(p.roi>0?'+':'')+p.roi.toFixed(1)+'%';
-      const credColor=p.credits>0?'var(--green)':'var(--red)';
-      html+=`<tr class="${isMe?'me':''}">
-        <td class="lb-rank-cell"><span class="lb-rank-badge ${i>2?'lb-rank-num':''}">${medals[i]||i+1}</span></td>
-        <td class="lb-name-cell">${p.name}${isMe?'<span class="lb-me">ty</span>':''}</td>
-        <td class="lb-tips-cell r">${p.tipCount} <span class="lb-pending">(${p.pending} čeká)</span></td>
-        <td class="lb-creds-cell r" style="color:${credColor}">${p.credits.toLocaleString('cs-CZ')} kr</td>
-        <td class="lb-roi-cell r ${roiCls}">${roiStr}</td>
-      </tr>`;
-    }
+    const roiCls=p.roi>0?'roi-pos':p.roi<0?'roi-neg':'roi-zero';
+    const roiStr=(p.roi>0?'+':'')+p.roi.toFixed(1)+'%';
+    const credColor=p.credits>0?'var(--green)':'var(--red)';
+    const pending=Math.max(0,p.tipCount-p.settledCount);
+    html+=`<tr class="${isMe?'me':''}">
+      <td class="lb-rank-cell"><span class="lb-rank-badge ${i>2?'lb-rank-num':''}">${medals[i]||i+1}</span></td>
+      <td class="lb-name-cell">${p.name}${isMe?'<span class="lb-me">ty</span>':''}</td>
+      <td class="lb-tips-cell r">${p.tipCount} <span class="lb-pending">(${pending} čeká)</span></td>
+      <td class="lb-creds-cell r" style="color:${credColor}">${p.credits.toLocaleString('cs-CZ')} kr</td>
+      <td class="lb-roi-cell r ${roiCls}">${roiStr}</td>
+    </tr>`;
   });
   html+='</tbody></table></div>';
   el.innerHTML=html;
@@ -891,12 +868,11 @@ async function renderAdmin(){
   const{data:matches}=currentComp?await sb.from('matches').select('*').eq('competition_id',currentComp.id).order('match_date'):{data:[]};
   let html=`<div class="admin-box"><h3>Nová soutěž</h3>
     <div class="field"><label>Název</label><input type="text" id="compName" placeholder="NHL Playoff 2026"></div>
-    <div class="field"><label>Liga</label><select id="compLeague" onchange="setCompetitionPreset()"><option value="nhl">NHL</option><option value="extraliga">Česká extraliga</option><option value="Mistrovství světa">Mistrovství světa</option></select></div>
-    <div class="field"><label>Typ soutěže</label><select id="compScoringMode"><option value="credits">Kurzová soutěž za kredity</option><option value="points">Bodová soutěž bez kurzů</option></select></div>
+    <div class="field"><label>Liga</label><select id="compLeague"><option value="nhl">NHL</option><option value="extraliga">Česká extraliga</option><option value="Mistrovství světa">Mistrovství světa</option></select></div>
     <div class="field"><label>Sezóna</label><input type="text" id="compSeason" placeholder="2025/26"></div>
     <button class="btn-a btn-g" onclick="createComp()" style="width:100%">Vytvořit soutěž</button>
   </div><div class="admin-box"><h3>Soutěže</h3>`;
-  if(comps&&comps.length){comps.forEach(c=>{html+=`<div class="comp-item"><span style="flex:1;font-weight:500;color:var(--text)">${c.name} · ${c.league} · ${isPointsCompetition(c)?'body':'kredity'}</span>${c.active?'<span class="comp-active">Aktivní</span>':`<button class="btn-a" style="font-size:11px;padding:3px 10px" onclick="activateComp('${c.id}')">Aktivovat</button>`}</div>`;});}
+  if(comps&&comps.length){comps.forEach(c=>{html+=`<div class="comp-item"><span style="flex:1;font-weight:500;color:var(--text)">${c.name} · ${c.league}</span>${c.active?'<span class="comp-active">Aktivní</span>':`<button class="btn-a" style="font-size:11px;padding:3px 10px" onclick="activateComp('${c.id}')">Aktivovat</button>`}</div>`;});}
   else html+='<div class="empty">Žádné soutěže</div>';
   html+='</div>';
 
@@ -910,16 +886,15 @@ async function renderAdmin(){
   </div>`;
 
   if(currentComp){
-    const pointsMode=isPointsCompetition();
     html+=`<div class="admin-box"><h3>Přidat zápas → ${currentComp.name}</h3>
       <div class="field"><label>Domácí</label><input type="text" id="mHome" placeholder="Colorado Avalanche"></div>
       <div class="field"><label>Hosté</label><input type="text" id="mAway" placeholder="Vegas Golden Knights"></div>
       <div class="field"><label>Datum</label><input type="text" id="mDate" placeholder="25.5.2026 02:00"></div>
-      ${pointsMode?'<div style="color:var(--gold);font-size:12px;margin-bottom:10px">Bodová soutěž bez kurzů: hráči tipují přesný výsledek.</div>':`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
         <div class="field"><label>Kurz dom.</label><input type="number" id="mOH" step="0.01" placeholder="1.85"></div>
         <div class="field"><label>Kurz rem.</label><input type="number" id="mOD" step="0.01" placeholder="3.80"></div>
         <div class="field"><label>Kurz host.</label><input type="number" id="mOA" step="0.01" placeholder="4.20"></div>
-      </div>`}
+      </div>
       <button class="btn-a btn-g" onclick="addMatch()" style="width:100%">Přidat zápas</button>
     </div>`;
     const pend=(matches||[]).filter(m=>m.status!=='done');
@@ -979,28 +954,13 @@ async function adjustUserCredits(){
   loadUpdates();
 }
 
-function setCompetitionPreset(){
-  const league=document.getElementById('compLeague')?.value||'';
-  const mode=document.getElementById('compScoringMode');
-  if(!mode)return;
-  mode.value=String(league).toLowerCase().includes('mistrov')?'points':'credits';
-}
-
 async function createComp(){
   const name=document.getElementById('compName').value.trim();
   const league=document.getElementById('compLeague').value;
   const season=document.getElementById('compSeason').value.trim();
-  const scoring_mode=document.getElementById('compScoringMode')?.value||'credits';
   if(!name||!season){alert('Vyplň název a sezónu.');return;}
   await sb.from('competitions').update({active:false}).neq('id','00000000-0000-0000-0000-000000000000');
-  let payload={name,league,season,active:true,scoring_mode};
-  let{data,error}=await sb.from('competitions').insert(payload).select().single();
-  // Když v databázi ještě není sloupec scoring_mode, soutěž se vytvoří i bez něj.
-  // Mistrovství světa se i tak pozná podle ligy a poběží bodově.
-  if(error&&String(error.message||'').includes('scoring_mode')){
-    ({data,error}=await sb.from('competitions').insert({name,league,season,active:true}).select().single());
-  }
-  if(error){alert('Soutěž se nepodařilo vytvořit: '+error.message);return;}
+  const{data}=await sb.from('competitions').insert({name,league,season,active:true}).select().single();
   if(data){currentComp=data;alert('Soutěž vytvořena!');renderAdmin();renderMatches();}
 }
 
@@ -1015,14 +975,10 @@ async function addMatch(){
   const home=document.getElementById('mHome').value.trim();
   const away=document.getElementById('mAway').value.trim();
   const date=document.getElementById('mDate').value.trim();
-  const pointsMode=isPointsCompetition();
-  let oh=1,od=1,oa=1;
-  if(!pointsMode){
-    oh=parseFloat(document.getElementById('mOH').value);
-    od=parseFloat(document.getElementById('mOD').value);
-    oa=parseFloat(document.getElementById('mOA').value);
-  }
-  if(!home||!away||!date||(!pointsMode&&(!oh||!od||!oa))){alert('Vyplň vše.');return;}
+  const oh=parseFloat(document.getElementById('mOH').value);
+  const od=parseFloat(document.getElementById('mOD').value);
+  const oa=parseFloat(document.getElementById('mOA').value);
+  if(!home||!away||!date||!oh||!od||!oa){alert('Vyplň vše.');return;}
   await sb.from('matches').insert({competition_id:currentComp.id,home,away,match_date:date,status:'upcoming',odds_home:oh,odds_draw:od,odds_away:oa});
   alert('Zápas přidán!');renderAdmin();renderMatches();
 }
