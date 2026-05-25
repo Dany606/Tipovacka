@@ -553,24 +553,34 @@ async function loadUpdates(){
       .order('created_at',{ascending:false})
       .limit(8);
     if(error)throw error;
-    renderUpdates(data||[]);
+
+    // Pokud Supabase tabulka existuje, bereme ji jako hlavní zdroj pro všechny hráče.
+    // K lokálním aktualizacím se sáhne jen tehdy, když je tabulka prázdná,
+    // aby admin nepřišel o starší záznamy vytvořené před zapnutím veřejné tabulky.
+    if(data && data.length) renderUpdates(data);
+    else renderUpdates(localCreditUpdates());
   }catch(e){
     console.warn('updates:',e);
-    // Když tabulka updates v Supabase neexistuje nebo není veřejně čitelná,
-    // raději box schováme všem. Dřívější localStorage fallback způsobil,
-    // že aktualizaci viděl jen admin na svém zařízení.
-    renderUpdates([]);
+    // Když tabulka updates v Supabase ještě neexistuje nebo nemá práva,
+    // zobrazíme aspoň lokální historii adminovi, aby box úplně nezmizel.
+    // Jakmile tabulku v Supabase doplníš, uvidí stejné aktualizace všichni.
+    renderUpdates(localCreditUpdates());
   }
 }
 
 async function addCreditUpdate(username,amount,userId){
   const item={type:'credits_purchase',username,amount:Number(amount)||0,user_id:userId||null,created_at:new Date().toISOString()};
+
+  // Lokální záloha: díky tomu aktualizace nezmizí adminovi ani v případě,
+  // že Supabase tabulka updates ještě není vytvořená nebo nemá práva pro zápis.
+  saveLocalCreditUpdate(item);
+
   try{
     const{error}=await sb.from('updates').insert(item);
     if(error)throw error;
   }catch(e){
     console.warn('updates insert:',e);
-    alert('Kredity byly upraveny, ale veřejná aktualizace se neuložila. Zkontroluj prosím v Supabase tabulku „updates“ a práva pro insert/select.');
+    alert('Kredity byly upraveny a aktualizace se ukáže aspoň u tebe. Aby ji viděli všichni hráči, je potřeba v Supabase vytvořit/povolit tabulku „updates“.');
   }
   if(!isPointsCompetition())await loadUpdates();
 }
