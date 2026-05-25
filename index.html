@@ -1208,7 +1208,13 @@ async function adjustUserCredits(){
   if(error){alert('Kredity se nepodařilo uložit.');return;}
 
   if(currentUser&&currentUser.id===userId){currentUser.credits=newCredits;await updateCreditsDisplay();}
-  if(mode==='add'&&amount>0)await addCreditUpdate(user.username,amount,userId);
+
+  // Aktualizaci bereme podle skutečného navýšení kreditů, ne jen podle volby "Přidat".
+  // Díky tomu se záznam zobrazí i tehdy, když admin použije "Nastavit přesnou hodnotu"
+  // například z 0 kr na 5 000 kr.
+  const purchasedAmount=newCredits-currentCredits;
+  if(purchasedAmount>0)await addCreditUpdate(user.username,purchasedAmount,userId);
+
   alert('Kredity upraveny.');
   renderAdmin();
   renderLeaderboard();
