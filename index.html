@@ -46,14 +46,11 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .nav-btn{flex:1 1 80px;padding:12px 8px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:var(--text2);background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;transition:all .15s;text-align:center}
 .nav-btn:hover{color:var(--text);background:rgba(255,255,255,0.03)}
 .nav-btn.active{color:var(--gold);border-bottom-color:var(--gold)}
-.league-switch{flex:0 0 auto;margin-left:auto;padding:6px 8px;display:flex;align-items:center;gap:6px;border-left:1px solid var(--border);min-width:0}
-.league-switch-label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-right:2px;white-space:nowrap}
-.league-tab{min-width:44px;padding:7px 12px;border:1px solid var(--border2);border-radius:999px;background:rgba(13,17,23,.78);color:var(--text2);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:800;line-height:1;cursor:pointer;transition:all .15s;white-space:nowrap}
-.league-tab:hover{color:var(--text);border-color:var(--gold);background:rgba(227,179,65,.08)}
-.league-tab.active{color:var(--gold);border-color:var(--gold);background:rgba(227,179,65,.14);box-shadow:0 0 0 2px rgba(227,179,65,.08)}
-/* pojistka: v horní navigaci se soutěže nikdy nesmí vykreslit jako rozbalovací select */
-.nav-inner > select,.nav-inner .comp-switch-wrap,.comp-switch-wrap select,#competitionSwitcher,#compSwitcher,#competitionSelect{display:none!important;width:0!important;height:0!important;opacity:0!important;pointer-events:none!important}
-@media(max-width:640px){.league-switch{flex-basis:100%;border-left:none;border-top:1px solid var(--border);justify-content:center;margin-left:0}.nav-btn{flex-basis:25%}}
+.comp-switch-wrap{flex:1.4 1 220px;padding:6px 8px;display:flex;align-items:center;gap:8px;border-left:1px solid var(--border)}
+.comp-switch-label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;white-space:nowrap}
+.comp-switch{width:100%;min-width:160px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:7px 10px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;color:var(--gold);outline:none;cursor:pointer}
+.comp-switch:focus{border-color:var(--gold)}
+@media(max-width:640px){.comp-switch-wrap{flex-basis:100%;border-left:none;border-top:1px solid var(--border)}.nav-btn{flex-basis:25%}}
 .screen{display:none}.screen.active{display:block}
 .auth-page{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem 1rem;background:radial-gradient(ellipse at top,#1c2128 0%,var(--bg) 60%)}
 .auth-logo{font-family:'Bebas Neue',sans-serif;font-size:3rem;letter-spacing:3px;color:var(--text);margin-bottom:4px;text-align:center}
@@ -236,7 +233,10 @@ select:focus{border-color:var(--blue)}
       <button class="nav-btn" onclick="switchTab('mytips',this)">🎫 Mé tipy</button>
       <button class="nav-btn" onclick="switchTab('leaderboard',this)">🏆 Žebříček</button>
       <button class="nav-btn" id="adminNavBtn" style="display:none" onclick="switchTab('admin',this)">⚙️ Admin</button>
-      <div class="league-switch" id="leagueSwitch" style="display:none" aria-label="Přepínač soutěží"></div>
+      <div class="comp-switch-wrap" id="compSwitchWrap" style="display:none">
+        <span class="comp-switch-label">Soutěž</span>
+        <select id="compSelect" class="comp-switch" onchange="switchCompetition(this.value)"></select>
+      </div>
     </div>
   </div>
   <div class="ticker-wrap" id="tickerBar" style="display:none">
@@ -247,13 +247,14 @@ select:focus{border-color:var(--blue)}
   <div id="tab-matches" class="page">
     <div class="rules-box">
       <h3>📋 Pravidla tipovačky</h3>
-      <div class="rules-grid" id="rulesGrid">
+      <div class="rules-grid">
         <div class="rule">💰 Start: <strong>10 000 kr</strong></div>
         <div class="rule">⬇️ Min sázka: <strong>100 kr</strong></div>
         <div class="rule">🏆 Vyhrává: <strong>nejvíc kreditů</strong></div>
         <div class="rule">🚫 Bankrot: <strong>0 kr = konec</strong></div>
       </div>
-      <div class="rules-note" id="rulesNote"><b>Výsledek základní doby (1X2)</b> — výhra = sázka × kurz &nbsp;·&nbsp; <b>Vítěz vč. prod./náj.</b> — výhra = sázka × kurz vítěze</div>
+      <div class="rules-note"><b>Výsledek základní doby (1X2)</b> — výhra = sázka × kurz &nbsp;·&nbsp; <b>Vítěz vč. prod./náj.</b> — výhra = sázka × kurz vítěze</div>
+      <div class="rules-note"><b>Bodová soutěž bez kurzů</b> — hráč tipuje přesný výsledek včetně prodloužení/nájezdů. Za zápas lze získat maximálně <b>5 bodů</b>. Pokud hráč trefí přesný výsledek, získá rovnou <b>+5 bodů</b> a další body se už nepřičítají. Pokud přesný výsledek netrefí, počítá se: správný vítěz <b>+1 bod</b>, přesný počet gólů domácího týmu <b>+1 bod</b>, přesný počet gólů hostujícího týmu <b>+1 bod</b>, špatný tip <b>0 bodů</b>.</div>
     </div>
     <div class="updates-box" id="updatesBox" style="display:none">
       <h3>📝 Aktualizace</h3>
@@ -347,48 +348,16 @@ async function loadActiveComp(){
   updateCompetitionSwitcher();
 }
 
-function competitionShortLabel(comp){
-  const league=String(comp?.league||'').toLowerCase();
-  const name=String(comp?.name||'').toLowerCase();
-  const combined=(league+' '+name).trim();
-  if(combined.includes('mistrovství')||combined.includes('mistrovstvi')||combined.includes('world'))return 'MS';
-  if(combined.includes('extraliga'))return 'Extraliga';
-  if(combined.includes('nhl'))return 'NHL';
-  return (comp?.league||comp?.name||'Soutěž').toString().trim().slice(0,12);
-}
-
 function updateCompetitionSwitcher(){
   const top=document.getElementById('topComp');
-  const box=document.getElementById('leagueSwitch');
+  const wrap=document.getElementById('compSwitchWrap');
+  const sel=document.getElementById('compSelect');
   if(top)top.textContent=currentComp?currentComp.name:'Žádná soutěž';
-
-  // odstranění starého rozbalovacího selectu z předchozích verzí
-  const oldWrap=document.getElementById('compSwitchWrap');
-  if(oldWrap)oldWrap.remove();
-  document.querySelectorAll('#competitionSwitcher,#compSwitcher,#competitionSelect,.nav-inner > select').forEach(el=>{
-    // admin selecty nejsou přímým potomkem .nav-inner, takže tohle je bezpečné jen pro horní lištu
-    el.remove();
-  });
-
-  if(!box)return;
-  if(!allCompetitions.length){
-    box.style.display='none';
-    box.innerHTML='';
-    renderRules();
-    return;
-  }
-
-  box.style.display='flex';
-  const comps=(allCompetitions||[]).filter(Boolean);
-  box.innerHTML='<span class="league-switch-label">Soutěž</span>'+comps.map(c=>{
-    const active=currentComp&&String(c.id)===String(currentComp.id);
-    const label=competitionShortLabel(c);
-    const title=escapeHTML((c.name||'')+(c.league?' · '+c.league:''));
-    return `<button type="button" class="league-tab ${active?'active':''}" title="${title}" onclick="switchCompetition('${c.id}')">${escapeHTML(label)}</button>`;
-  }).join('');
-  renderRules();
+  if(!wrap||!sel)return;
+  if(!allCompetitions.length){wrap.style.display='none';sel.innerHTML='';return;}
+  wrap.style.display='flex';
+  sel.innerHTML=allCompetitions.map(c=>`<option value="${c.id}" ${currentComp&&c.id===currentComp.id?'selected':''}>${escapeHTML(c.name)} · ${escapeHTML(c.league||'')}</option>`).join('');
 }
-
 
 async function switchCompetition(id){
   const comp=allCompetitions.find(c=>String(c.id)===String(id));
@@ -412,35 +381,11 @@ async function switchCompetition(id){
 
 
 
-function renderRules(){
-  const grid=document.getElementById('rulesGrid');
-  const note=document.getElementById('rulesNote');
-  if(!grid||!note)return;
-  if(isPointsCompetition()){
-    grid.innerHTML=`
-      <div class="rule">🎯 Tipuje se: <strong>přesný výsledek</strong></div>
-      <div class="rule">🏆 Vyhrává: <strong>nejvíc bodů</strong></div>
-      <div class="rule">⏱️ Výsledek: <strong>vč. prod./náj.</strong></div>
-      <div class="rule">🔝 Maximum: <strong>5 bodů / zápas</strong></div>`;
-    note.innerHTML='<b>Bodová soutěž bez kurzů</b> — pokud hráč trefí přesný výsledek, získá rovnou <b>+5 bodů</b> a další body se už nepřičítají. Pokud přesný výsledek netrefí, počítá se: správný vítěz včetně prodloužení/nájezdů <b>+1 bod</b>, přesný počet gólů domácího týmu <b>+1 bod</b>, přesný počet gólů hostujícího týmu <b>+1 bod</b>, špatný tip <b>0 bodů</b>.';
-  }else{
-    grid.innerHTML=`
-      <div class="rule">💰 Start: <strong>10 000 kr</strong></div>
-      <div class="rule">⬇️ Min sázka: <strong>100 kr</strong></div>
-      <div class="rule">🏆 Vyhrává: <strong>nejvíc kreditů</strong></div>
-      <div class="rule">🚫 Bankrot: <strong>0 kr = konec</strong></div>`;
-    note.innerHTML='<b>Výsledek základní doby (1X2)</b> — výhra = sázka × kurz &nbsp;·&nbsp; <b>Vítěz vč. prod./náj.</b> — výhra = sázka × kurz vítěze';
-  }
-}
-
 function isPointsCompetition(comp=currentComp){
   if(!comp)return false;
   const league=String(comp.league||'').toLowerCase();
-  const name=String(comp.name||'').toLowerCase();
-  const mode=String(comp.scoring_mode||comp.type||comp.scoringMode||'').toLowerCase();
-  const topText=String(document.getElementById('topComp')?.textContent||'').toLowerCase();
-  const combined=(league+' '+name+' '+mode+' '+topText).trim();
-  return mode==='points'||mode==='bodova'||mode==='bodová'||mode==='body'||mode==='point'||combined.includes('mistrovství')||combined.includes('mistrovstvi')||combined.includes('world championship')||combined.includes('mistrovstvi sveta')||combined.includes('mistrovství světa')||combined.includes(' ms ');
+  const mode=String(comp.scoring_mode||comp.type||'').toLowerCase();
+  return mode==='points'||mode==='bodova'||mode==='bodová'||league.includes('mistrovství')||league.includes('mistrovstvi');
 }
 
 function pointsLabel(){return 'Bodová soutěž bez kurzů';}
