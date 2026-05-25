@@ -1,0 +1,32 @@
+name: NHL Auto Sync
+ 
+on:
+  schedule:
+    # Spustí se každý den ve 4:00 a 10:00 UTC (6:00 a 12:00 CZ)
+    - cron: '0 4 * * *'
+    - cron: '0 10 * * *'
+  workflow_dispatch:
+    # Umožňuje ruční spuštění z GitHubu (tlačítko "Run workflow")
+ 
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+ 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+ 
+      - name: Install dependencies
+        run: pip install requests
+ 
+      - name: Run NHL sync
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          COMPETITION_ID: ${{ secrets.COMPETITION_ID }}
+        run: python sync_nhl.py
