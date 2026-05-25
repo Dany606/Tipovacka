@@ -783,7 +783,7 @@ async function renderAdmin(){
   const{data:matches}=currentComp?await sb.from('matches').select('*').eq('competition_id',currentComp.id).order('match_date'):{data:[]};
   let html=`<div class="admin-box"><h3>Nová soutěž</h3>
     <div class="field"><label>Název</label><input type="text" id="compName" placeholder="NHL Playoff 2026"></div>
-    <div class="field"><label>Liga</label><select id="compLeague"><option value="nhl">NHL</option><option value="extraliga">Česká extraliga</option></select></div>
+    <div class="field"><label>Liga</label><select id="compLeague"><option value="nhl">NHL</option><option value="extraliga">Česká extraliga</option><option value="Mistrovství světa">Mistrovství světa</option></select></div>
     <div class="field"><label>Sezóna</label><input type="text" id="compSeason" placeholder="2025/26"></div>
     <button class="btn-a btn-g" onclick="createComp()" style="width:100%">Vytvořit soutěž</button>
   </div><div class="admin-box"><h3>Soutěže</h3>`;
