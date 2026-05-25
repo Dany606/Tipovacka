@@ -75,14 +75,14 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .rules-note{font-size:11.5px;color:var(--text3);line-height:1.6}
 .rules-note b{color:var(--text2)}
 
-.updates-box{background:rgba(22,27,34,0.9);border:1px solid rgba(227,179,65,.32);backdrop-filter:blur(6px);border-radius:var(--radius);padding:1rem 1.1rem;margin:-.35rem 0 1rem;box-shadow:0 0 18px rgba(227,179,65,.08)}
-.updates-box h3{font-size:11px;font-weight:600;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:.75rem;text-shadow:0 0 10px rgba(227,179,65,.25)}
-.update-list{display:flex;flex-direction:column;gap:6px}
-.update-row{display:grid;grid-template-columns:118px 1fr;gap:10px;align-items:start;padding:8px 10px;background:rgba(13,17,23,.55);border:1px solid rgba(48,54,61,.9);border-radius:7px;font-size:12.5px;line-height:1.35}
+.updates-box{background:rgba(22,27,34,0.9);border:1px solid rgba(227,179,65,.32);backdrop-filter:blur(6px);border-radius:var(--radius);padding:.7rem .85rem;margin:-.35rem 0 .8rem;box-shadow:0 0 14px rgba(227,179,65,.06)}
+.updates-box h3{font-size:10px;font-weight:600;color:var(--gold);text-transform:uppercase;letter-spacing:.9px;margin-bottom:.5rem;text-shadow:0 0 8px rgba(227,179,65,.2)}
+.update-list{display:flex;flex-direction:column;gap:4px}
+.update-row{display:grid;grid-template-columns:86px 1fr;gap:8px;align-items:center;padding:5px 8px;background:rgba(13,17,23,.5);border:1px solid rgba(48,54,61,.8);border-radius:6px;font-size:11.5px;line-height:1.25}
 .update-date{color:var(--text3);font-variant-numeric:tabular-nums}
 .update-text{color:var(--text)}
 .update-text strong{color:var(--gold)}
-.update-empty{color:var(--text3);font-size:12px;padding:4px 0}
+.update-empty{color:var(--text3);font-size:11.5px;padding:2px 0}
 @media(max-width:560px){.update-row{grid-template-columns:1fr;gap:2px}}
 .match-card{background:rgba(22,27,34,0.88);border:1px solid var(--border);backdrop-filter:blur(6px);border-radius:var(--radius);margin-bottom:8px;overflow:hidden;transition:border-color .15s}
 .match-card:hover{border-color:var(--border2)}
@@ -524,13 +524,16 @@ function saveLocalCreditUpdate(item){
   localStorage.setItem('tip_credit_updates',JSON.stringify(arr.slice(0,20)));
 }
 
-function renderUpdates(items){
+function renderUpdates(items,localOnly=false){
   const box=document.getElementById('updatesBox');
   const list=document.getElementById('updatesList');
   if(!box||!list)return;
-  const rows=(items||[]).slice(0,8);
+  const rows=(items||[]).slice(0,3);
   if(!rows.length){box.style.display='none';return;}
-  list.innerHTML=rows.map(u=>{
+  const warning=(localOnly&&currentUser?.username===ADMIN_USERNAME)
+    ? `<div class="update-warning">⚠️ Tyto aktualizace vidíš jen ty v tomto prohlížeči. Nejsou uložené veřejně v Supabase, takže je ostatní hráči neuvidí.</div>`
+    : '';
+  list.innerHTML=warning+rows.map(u=>{
     const created=u.created_at||u.createdAt||new Date().toISOString();
     const username=escapeHTML(u.username||u.player||'hráč');
     const amount=Number(u.amount||0).toLocaleString('cs-CZ');
@@ -553,36 +556,36 @@ async function loadUpdates(){
       .from('updates')
       .select('*')
       .order('created_at',{ascending:false})
-      .limit(20);
+      .limit(10);
     if(error)throw error;
 
     const rows=(data||[])
       .filter(u=>!u.type || u.type==='credits_purchase')
-      .slice(0,8);
+      .slice(0,3);
 
     if(rows.length) renderUpdates(rows);
-    else renderUpdates(localCreditUpdates());
+    else renderUpdates(localCreditUpdates(),true);
   }catch(e){
     console.warn('updates load:',e);
-    renderUpdates(localCreditUpdates());
+    renderUpdates(localCreditUpdates(),true);
   }
 }
 
 async function insertCreditUpdateToSupabase(item){
-  // Zkoušíme víc variant, protože u některých Supabase projektů může být
-  // sloupec user_id jiné hodnoty / typu, nebo tabulka nemusí mít všechny sloupce.
+  // Zkoušíme víc variant a u každé chceme vrátit uložený řádek.
+  // Díky .select() hned poznáme, jestli má web právo INSERT i SELECT.
   const variants=[
-    item,
+    {type:item.type,username:item.username,amount:item.amount,user_id:item.user_id,created_at:item.created_at},
     {type:item.type,username:item.username,amount:item.amount,created_at:item.created_at},
     {username:item.username,amount:item.amount,created_at:item.created_at}
   ];
 
   let lastError=null;
   for(const payload of variants){
-    const{error}=await sb.from('updates').insert(payload);
-    if(!error)return true;
-    lastError=error;
-    console.warn('updates insert variant failed:',error.message||error,payload);
+    const{data,error}=await sb.from('updates').insert(payload).select('*').single();
+    if(!error&&data)return data;
+    lastError=error||new Error('Supabase nevrátila uložený řádek.');
+    console.warn('updates insert variant failed:',lastError.message||lastError,payload);
   }
   throw lastError||new Error('Nepodařilo se uložit aktualizaci do Supabase.');
 }
@@ -590,14 +593,13 @@ async function insertCreditUpdateToSupabase(item){
 async function addCreditUpdate(username,amount,userId){
   const item={type:'credits_purchase',username,amount:Number(amount)||0,user_id:userId||null,created_at:new Date().toISOString()};
 
-  // Lokální záloha: admin ji uvidí i v případě, že Supabase zápis selže.
-  saveLocalCreditUpdate(item);
-
   try{
     await insertCreditUpdateToSupabase(item);
   }catch(e){
     console.warn('updates insert:',e);
-    alert('Kredity byly upraveny, ale veřejná aktualizace se neuložila do Supabase. Chyba: '+(e?.message||e));
+    // Lokální záloha jen jako nouzovka pro admina. Ostatní ji neuvidí.
+    saveLocalCreditUpdate(item);
+    alert('Kredity byly upraveny, ale veřejná aktualizace se NEULOŽILA do Supabase, takže ji ostatní hráči neuvidí. Chyba: '+(e?.message||e));
   }
   if(!isPointsCompetition())await loadUpdates();
 }
