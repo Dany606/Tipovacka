@@ -32,17 +32,17 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .t-item .neg{color:var(--red);font-weight:700}
 .t-div{color:var(--border2);margin:0 6px;font-size:10px}
 .site-header{background:rgba(22,27,34,0.93);border-bottom:1px solid var(--border);padding:0 1rem;backdrop-filter:blur(10px)}
-.header-inner{max-width:900px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;height:54px}
-.site-logo{font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:2px;color:var(--text)}
+.header-inner{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:minmax(180px,1fr) minmax(230px,320px) minmax(260px,1fr);align-items:center;gap:12px;height:54px}
+.site-logo{font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:2px;color:var(--text);white-space:nowrap}
 .site-logo span{color:var(--gold)}
 .header-comp{font-size:11px;color:var(--text3);margin-top:1px}
-.hright{display:flex;align-items:center;gap:8px}
-.comp-switch{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;border-radius:20px;padding:5px 28px 5px 12px;max-width:230px;outline:none;cursor:pointer}
+.hright{display:flex;align-items:center;gap:8px;justify-content:flex-end;min-width:0}
+.comp-switch{justify-self:center;width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;border-radius:20px;padding:5px 32px 5px 16px;outline:none;cursor:pointer;white-space:nowrap}
 .comp-switch:focus{border-color:var(--gold)}
 .comp-switch option{background:var(--bg2);color:var(--text)}
-@media(max-width:640px){.header-inner{height:auto;gap:8px;flex-wrap:wrap;padding:8px 0}.hright{flex-wrap:wrap;justify-content:flex-end}.comp-switch{order:3;width:100%;max-width:100%}}
-.credits-pill{background:rgba(227,179,65,0.12);border:1px solid rgba(227,179,65,0.3);color:var(--gold);font-size:13px;font-weight:600;padding:5px 14px;border-radius:20px}
-.user-pill{font-size:13px;font-weight:500;color:var(--text);background:var(--bg3);border:1px solid var(--border);padding:5px 12px;border-radius:20px}
+@media(max-width:760px){.header-inner{height:auto;grid-template-columns:1fr auto;gap:8px;padding:8px 0}.comp-switch{grid-column:1/-1;grid-row:2;width:100%;justify-self:stretch}.hright{justify-content:flex-end}}
+.credits-pill{background:rgba(227,179,65,0.12);border:1px solid rgba(227,179,65,0.3);color:var(--gold);font-size:13px;font-weight:600;padding:5px 14px;border-radius:20px;white-space:nowrap;min-width:max-content}
+.user-pill{font-size:13px;font-weight:500;color:var(--text);background:var(--bg3);border:1px solid var(--border);padding:5px 12px;border-radius:20px;white-space:nowrap}
 .btn-x{background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;padding:4px;transition:color .15s}
 .btn-x:hover{color:var(--red)}
 .site-nav{background:rgba(22,27,34,0.93);border-bottom:1px solid var(--border);backdrop-filter:blur(10px)}
@@ -219,8 +219,8 @@ select:focus{border-color:var(--blue)}
         <div class="site-logo">🏒 <span>Tipovačka</span></div>
         <div class="header-comp" id="topComp">NHL &amp; Extraliga</div>
       </div>
+      <select class="comp-switch" id="competitionSwitch" onchange="switchCompetition(this.value)" title="Přepnout soutěž" style="display:none"></select>
       <div class="hright">
-        <select class="comp-switch" id="competitionSwitch" onchange="switchCompetition(this.value)" title="Přepnout soutěž" style="display:none"></select>
         <span class="user-pill" id="topName">Hráč</span>
         <span class="credits-pill" id="topCredits">10 000 kr</span>
         <button class="btn-x" onclick="doLogout()" title="Odhlásit">✕</button>
