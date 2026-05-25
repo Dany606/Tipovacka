@@ -1,19 +1,16 @@
 """
 NHL Sync Script pro Tipovačku
-- Načte plánované zápasy na příštích 7 dní
-- Aktualizuje výsledky odehraných zápasů
-- Běží automaticky přes GitHub Actions každý den
+- Načte plánované zápasy NHL na příštích 7 dní
+- Aktualizuje výsledky pouze pro zápasy které jsou v naší DB jako 'upcoming'
 """
 
 import os
-import json
 import requests
 from datetime import datetime, timedelta, timezone
 
-# ── KONFIGURACE ──────────────────────────────────────────────────────
 SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_KEY = os.environ["SUPABASE_KEY"]  # service_role key (ne anon!)
-COMPETITION_ID = os.environ["COMPETITION_ID"]  # ID aktivní NHL soutěže
+SUPABASE_KEY = os.environ["SUPABASE_KEY"]
+COMPETITION_ID = os.environ["COMPETITION_ID"]
 
 NHL_API = "https://api-web.nhle.com/v1"
 
@@ -24,15 +21,7 @@ HEADERS = {
     "Prefer": "return=representation"
 }
 
-# Kurzy – odhadované pro playoff (lze ručně upravit)
-# Pokud oba týmy neznáme, použijeme default
 DEFAULT_ODDS = {"home": 1.85, "draw": 4.20, "away": 2.00}
-
-# Základní kurzy podle kontextu playoff
-TEAM_ODDS = {
-    # Formát: "HomeTeam vs AwayTeam": (home_odds, draw_odds, away_odds)
-    # Přidej ručně pokud chceš přesnější kurzy
-}
 
 
 def supabase_get(table, params=""):
@@ -58,11 +47,10 @@ def supabase_update(table, data, match_filter):
 
 
 def get_nhl_schedule(date_str):
-    """Načte zápasy NHL pro daný týden (od zadaného data)."""
     url = f"{NHL_API}/schedule/{date_str}"
     r = requests.get(url, timeout=10)
     if r.status_code != 200:
-        print(f"  Schedule API error {r.status_code} pro {date_str}")
+        print(f"  Schedule API error {r.status_code}")
         return []
     data = r.json()
     games = []
@@ -72,17 +60,7 @@ def get_nhl_schedule(date_str):
     return games
 
 
-def get_nhl_game_result(game_id):
-    """Načte výsledek konkrétního zápasu."""
-    url = f"{NHL_API}/gamecenter/{game_id}/landing"
-    r = requests.get(url, timeout=10)
-    if r.status_code != 200:
-        return None
-    return r.json()
-
-
 def format_team_name(team_obj):
-    """Sestaví celé jméno týmu z NHL API objektu."""
     city = team_obj.get("placeName", {}).get("default", "")
     name = team_obj.get("commonName", {}).get("default", "")
     if city and name:
@@ -91,102 +69,115 @@ def format_team_name(team_obj):
 
 
 def format_date_cz(game_time_utc):
-    """Převede UTC čas na český formát DD.MM.YYYY HH:MM."""
     try:
         dt = datetime.fromisoformat(game_time_utc.replace("Z", "+00:00"))
-        # Převod na CET/CEST (UTC+1/+2) - NHL hraje hlavně v noci
         cet = dt + timedelta(hours=2)
         return cet.strftime("%d.%m.%Y %H:%M")
     except Exception:
         return game_time_utc
 
 
-def get_existing_matches():
-    """Načte všechny existující zápasy z DB."""
-    matches = supabase_get("matches", f"?competition_id=eq.{COMPETITION_ID}&select=*")
-    return {f"{m['home']}|{m['away']}|{m['match_date'][:10]}": m for m in matches}
-
-
 def sync_schedule():
-    """Přidá nové nadcházející zápasy na příštích 14 dní."""
+    """Přidá nové nadcházející zápasy na příštích 7 dní."""
     print("\n📅 Synchronizuji program NHL...")
     today = datetime.now(timezone.utc).date()
     date_str = today.strftime("%Y-%m-%d")
-    
+
     games = get_nhl_schedule(date_str)
-    existing = get_existing_matches()
-    
+
+    # Načti existující zápasy
+    existing = supabase_get("matches", f"?competition_id=eq.{COMPETITION_ID}&select=home,away,match_date")
+    existing_keys = set()
+    for m in existing:
+        # Klíč podle jmen týmů
+        existing_keys.add(f"{m['home']}|{m['away']}")
+
     added = 0
     for g in games:
         state = g.get("gameState", "")
-        # Přidáme jen budoucí nebo dnešní zápasy
-        if state in ("OFF", "FINAL", "OVER"):
+        # Přidáme POUZE budoucí zápasy (FUT = future, PRE = pre-game)
+        if state not in ("FUT", "PRE"):
             continue
-        
+
         home_obj = g.get("homeTeam", {})
         away_obj = g.get("awayTeam", {})
         home = format_team_name(home_obj)
         away = format_team_name(away_obj)
         game_time = g.get("startTimeUTC", "")
         date_cz = format_date_cz(game_time)
-        date_key = game_time[:10]
-        
-        key = f"{home}|{away}|{date_key}"
-        if key in existing:
-            continue  # Zápas už existuje
-        
-        # Odhadni kurzy
-        pair_key = f"{home} vs {away}"
-        if pair_key in TEAM_ODDS:
-            oh, od, oa = TEAM_ODDS[pair_key]
-        else:
-            oh = DEFAULT_ODDS["home"]
-            od = DEFAULT_ODDS["draw"]
-            oa = DEFAULT_ODDS["away"]
-        
+
+        key = f"{home}|{away}"
+        if key in existing_keys:
+            print(f"  ⏭ Přeskočen (existuje): {home} – {away}")
+            continue
+
         match_data = {
             "competition_id": COMPETITION_ID,
             "home": home,
             "away": away,
             "match_date": date_cz,
             "status": "upcoming",
-            "odds_home": oh,
-            "odds_draw": od,
-            "odds_away": oa,
+            "odds_home": DEFAULT_ODDS["home"],
+            "odds_draw": DEFAULT_ODDS["draw"],
+            "odds_away": DEFAULT_ODDS["away"],
             "result_home": None,
             "result_away": None,
             "decision": None
         }
-        
+
         try:
             supabase_insert("matches", match_data)
             print(f"  ✅ Přidán: {home} – {away} ({date_cz})")
             added += 1
         except Exception as e:
-            print(f"  ❌ Chyba při přidávání {home} – {away}: {e}")
-    
-    print(f"  Celkem přidáno: {added} nových zápasů")
+            print(f"  ❌ Chyba: {home} – {away}: {e}")
+
+    print(f"  Přidáno: {added} nových zápasů")
 
 
 def sync_results():
-    """Aktualizuje výsledky odehraných zápasů."""
+    """Aktualizuje výsledky POUZE pro zápasy které jsou v DB jako 'upcoming' a datum již prošlo."""
     print("\n🏒 Aktualizuji výsledky...")
-    
-    # Načti zápasy které jsou 'upcoming' ale datum už prošlo
-    now_cz = datetime.now(timezone.utc) + timedelta(hours=2)
-    today = now_cz.strftime("%Y-%m-%d")
-    
-    # Načti všechny upcoming zápasy
-    matches = supabase_get("matches", 
+
+    # Načti pouze upcoming zápasy z naší DB
+    upcoming = supabase_get("matches",
         f"?competition_id=eq.{COMPETITION_ID}&status=eq.upcoming&select=*")
-    
-    # Načti NHL výsledky za posledních 7 dní
-    week_ago = (datetime.now(timezone.utc).date() - timedelta(days=7)).strftime("%Y-%m-%d")
-    games = get_nhl_schedule(week_ago)
-    
-    # Indexuj podle jmen týmů
-    results_by_teams = {}
-    for g in games:
+
+    if not upcoming:
+        print("  Žádné upcoming zápasy.")
+        return
+
+    # Aktuální čas v CET
+    now_cet = datetime.now(timezone.utc) + timedelta(hours=2)
+
+    # Filtruj pouze zápasy jejichž čas již prošel (+ 3 hodiny buffer na dokončení)
+    to_check = []
+    for m in upcoming:
+        try:
+            date_str = m["match_date"]
+            # Parsuj český formát DD.MM.YYYY HH:MM
+            dt = datetime.strptime(date_str, "%d.%m.%Y %H:%M")
+            if now_cet > dt.replace(tzinfo=None) + timedelta(hours=3):
+                to_check.append(m)
+        except Exception:
+            pass
+
+    if not to_check:
+        print("  Žádné zápasy k vyhodnocení (ještě neskončily).")
+        return
+
+    print(f"  Kontroluji {len(to_check)} zápasů...")
+
+    # Načti NHL výsledky pro dnešek a včerejšek
+    today = datetime.now(timezone.utc).date()
+    yesterday = (today - timedelta(days=1)).strftime("%Y-%m-%d")
+    games_today = get_nhl_schedule(today.strftime("%Y-%m-%d"))
+    games_yesterday = get_nhl_schedule(yesterday)
+    all_games = games_today + games_yesterday
+
+    # Indexuj dokončené zápasy podle jmen týmů
+    results_map = {}
+    for g in all_games:
         state = g.get("gameState", "")
         if state not in ("OFF", "FINAL", "OVER"):
             continue
@@ -194,49 +185,46 @@ def sync_results():
         away = format_team_name(g.get("awayTeam", {}))
         home_score = g.get("homeTeam", {}).get("score")
         away_score = g.get("awayTeam", {}).get("score")
-        
+
         # Zjisti způsob rozhodnutí
-        period_descriptor = g.get("periodDescriptor", {})
-        periods = g.get("periodDescriptor", {}).get("number", 3)
+        period_num = g.get("periodDescriptor", {}).get("number", 3)
         decision = "reg"
-        if periods == 4:
+        if period_num == 4:
             decision = "ot"
-        elif periods == 5:
+        elif period_num >= 5:
             decision = "so"
-        
+
         if home_score is not None and away_score is not None:
-            results_by_teams[f"{home}|{away}"] = {
+            results_map[f"{home}|{away}"] = {
                 "result_home": home_score,
                 "result_away": away_score,
                 "decision": decision
             }
-    
+
     updated = 0
-    for m in matches:
+    for m in to_check:
         key = f"{m['home']}|{m['away']}"
-        if key not in results_by_teams:
+        if key not in results_map:
+            print(f"  ⏳ Výsledek nenalezen: {m['home']} – {m['away']}")
             continue
-        
-        result = results_by_teams[key]
+
+        result = results_map[key]
         try:
-            supabase_update("matches", 
+            supabase_update("matches",
                 {**result, "status": "done"},
                 f"id=eq.{m['id']}"
             )
-            dec_label = {"reg": "reg. čas", "ot": "prodloužení", "so": "nájezdy"}
-            print(f"  ✅ Výsledek: {m['home']} {result['result_home']}:{result['result_away']} {m['away']} ({dec_label.get(result['decision'], '')})")
+            dec = {"reg": "reg. čas", "ot": "prodl.", "so": "náj."}.get(result["decision"], "")
+            print(f"  ✅ {m['home']} {result['result_home']}:{result['result_away']} {m['away']} ({dec})")
             updated += 1
         except Exception as e:
-            print(f"  ❌ Chyba při aktualizaci {m['home']} – {m['away']}: {e}")
-    
-    print(f"  Celkem aktualizováno: {updated} výsledků")
+            print(f"  ❌ Chyba: {m['home']} – {m['away']}: {e}")
+
+    print(f"  Aktualizováno: {updated} výsledků")
 
 
 if __name__ == "__main__":
-    print("🏒 NHL Sync start:", datetime.now().strftime("%Y-%m-%d %H:%M"))
-    print(f"   Competition ID: {COMPETITION_ID}")
-    
+    print("🏒 NHL Sync:", datetime.now().strftime("%Y-%m-%d %H:%M"))
     sync_schedule()
     sync_results()
-    
     print("\n✅ Hotovo!")
