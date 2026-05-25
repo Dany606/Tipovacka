@@ -46,15 +46,14 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .nav-btn{flex:1 1 80px;padding:12px 8px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:var(--text2);background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;transition:all .15s;text-align:center}
 .nav-btn:hover{color:var(--text);background:rgba(255,255,255,0.03)}
 .nav-btn.active{color:var(--gold);border-bottom-color:var(--gold)}
-.comp-switch-wrap{flex:0 0 auto;padding:6px 8px;display:flex;align-items:center;gap:8px;border-left:1px solid var(--border)}
-.comp-switch-label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;white-space:nowrap}
-.comp-tabs{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.comp-switch-wrap select{display:none!important}
-.comp-switch-wrap{min-width:auto!important;gap:8px}
-.comp-tab{min-width:44px;padding:7px 12px;border:1px solid var(--border2);border-radius:999px;background:rgba(13,17,23,.72);color:var(--text2);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;line-height:1;cursor:pointer;transition:all .15s;white-space:nowrap}
-.comp-tab:hover{color:var(--text);border-color:var(--gold);background:rgba(227,179,65,.08)}
-.comp-tab.active{color:var(--gold);border-color:var(--gold);background:rgba(227,179,65,.12);box-shadow:0 0 0 2px rgba(227,179,65,.08)}
-@media(max-width:640px){.comp-switch-wrap{flex-basis:100%;border-left:none;border-top:1px solid var(--border);justify-content:center}.nav-btn{flex-basis:25%}.comp-tabs{justify-content:center}}
+.league-switch{flex:0 0 auto;margin-left:auto;padding:6px 8px;display:flex;align-items:center;gap:6px;border-left:1px solid var(--border);min-width:0}
+.league-switch-label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-right:2px;white-space:nowrap}
+.league-tab{min-width:44px;padding:7px 12px;border:1px solid var(--border2);border-radius:999px;background:rgba(13,17,23,.78);color:var(--text2);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:800;line-height:1;cursor:pointer;transition:all .15s;white-space:nowrap}
+.league-tab:hover{color:var(--text);border-color:var(--gold);background:rgba(227,179,65,.08)}
+.league-tab.active{color:var(--gold);border-color:var(--gold);background:rgba(227,179,65,.14);box-shadow:0 0 0 2px rgba(227,179,65,.08)}
+/* pojistka: v horní navigaci se soutěže nikdy nesmí vykreslit jako rozbalovací select */
+.nav-inner > select,.nav-inner .comp-switch-wrap,.comp-switch-wrap select,#competitionSwitcher,#compSwitcher,#competitionSelect{display:none!important;width:0!important;height:0!important;opacity:0!important;pointer-events:none!important}
+@media(max-width:640px){.league-switch{flex-basis:100%;border-left:none;border-top:1px solid var(--border);justify-content:center;margin-left:0}.nav-btn{flex-basis:25%}}
 .screen{display:none}.screen.active{display:block}
 .auth-page{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem 1rem;background:radial-gradient(ellipse at top,#1c2128 0%,var(--bg) 60%)}
 .auth-logo{font-family:'Bebas Neue',sans-serif;font-size:3rem;letter-spacing:3px;color:var(--text);margin-bottom:4px;text-align:center}
@@ -237,10 +236,7 @@ select:focus{border-color:var(--blue)}
       <button class="nav-btn" onclick="switchTab('mytips',this)">🎫 Mé tipy</button>
       <button class="nav-btn" onclick="switchTab('leaderboard',this)">🏆 Žebříček</button>
       <button class="nav-btn" id="adminNavBtn" style="display:none" onclick="switchTab('admin',this)">⚙️ Admin</button>
-      <div class="comp-switch-wrap" id="compSwitchWrap" style="display:none">
-        <span class="comp-switch-label">Soutěž</span>
-        <div id="compTabs" class="comp-tabs"></div>
-      </div>
+      <div class="league-switch" id="leagueSwitch" style="display:none" aria-label="Přepínač soutěží"></div>
     </div>
   </div>
   <div class="ticker-wrap" id="tickerBar" style="display:none">
@@ -363,33 +359,36 @@ function competitionShortLabel(comp){
 
 function updateCompetitionSwitcher(){
   const top=document.getElementById('topComp');
-  let wrap=document.getElementById('compSwitchWrap');
+  const box=document.getElementById('leagueSwitch');
   if(top)top.textContent=currentComp?currentComp.name:'Žádná soutěž';
 
-  // Tvrdá oprava starého rozbalovacího selectu: přepínač soutěží má být jen jako malé štítky MS/NHL/Extraliga.
-  if(wrap){
-    wrap.innerHTML='<span class="comp-switch-label">Soutěž</span><div id="compTabs" class="comp-tabs"></div>';
-  }
-  const tabs=document.getElementById('compTabs');
-  if(!wrap||!tabs)return;
+  // odstranění starého rozbalovacího selectu z předchozích verzí
+  const oldWrap=document.getElementById('compSwitchWrap');
+  if(oldWrap)oldWrap.remove();
+  document.querySelectorAll('#competitionSwitcher,#compSwitcher,#competitionSelect,.nav-inner > select').forEach(el=>{
+    // admin selecty nejsou přímým potomkem .nav-inner, takže tohle je bezpečné jen pro horní lištu
+    el.remove();
+  });
 
+  if(!box)return;
   if(!allCompetitions.length){
-    wrap.style.display='none';
-    tabs.innerHTML='';
+    box.style.display='none';
+    box.innerHTML='';
     renderRules();
     return;
   }
 
-  wrap.style.display='flex';
-  const unique=[];
-  const seen=new Set();
-  (allCompetitions||[]).forEach(c=>{
-    const key=competitionShortLabel(c);
-    if(!seen.has(String(c.id))){seen.add(String(c.id));unique.push(c);}
-  });
-  tabs.innerHTML=unique.map(c=>`<button type="button" class="comp-tab ${currentComp&&String(c.id)===String(currentComp.id)?'active':''}" title="${escapeHTML((c.name||'')+' · '+(c.league||''))}" onclick="switchCompetition('${c.id}')">${escapeHTML(competitionShortLabel(c))}</button>`).join('');
+  box.style.display='flex';
+  const comps=(allCompetitions||[]).filter(Boolean);
+  box.innerHTML='<span class="league-switch-label">Soutěž</span>'+comps.map(c=>{
+    const active=currentComp&&String(c.id)===String(currentComp.id);
+    const label=competitionShortLabel(c);
+    const title=escapeHTML((c.name||'')+(c.league?' · '+c.league:''));
+    return `<button type="button" class="league-tab ${active?'active':''}" title="${title}" onclick="switchCompetition('${c.id}')">${escapeHTML(label)}</button>`;
+  }).join('');
   renderRules();
 }
+
 
 async function switchCompetition(id){
   const comp=allCompetitions.find(c=>String(c.id)===String(id));
@@ -439,8 +438,9 @@ function isPointsCompetition(comp=currentComp){
   const league=String(comp.league||'').toLowerCase();
   const name=String(comp.name||'').toLowerCase();
   const mode=String(comp.scoring_mode||comp.type||comp.scoringMode||'').toLowerCase();
-  const combined=(league+' '+name+' '+mode).trim();
-  return mode==='points'||mode==='bodova'||mode==='bodová'||mode==='body'||combined.includes('mistrovství')||combined.includes('mistrovstvi')||combined.includes('world championship')||combined.includes('ms ');
+  const topText=String(document.getElementById('topComp')?.textContent||'').toLowerCase();
+  const combined=(league+' '+name+' '+mode+' '+topText).trim();
+  return mode==='points'||mode==='bodova'||mode==='bodová'||mode==='body'||mode==='point'||combined.includes('mistrovství')||combined.includes('mistrovstvi')||combined.includes('world championship')||combined.includes('mistrovstvi sveta')||combined.includes('mistrovství světa')||combined.includes(' ms ');
 }
 
 function pointsLabel(){return 'Bodová soutěž bez kurzů';}
