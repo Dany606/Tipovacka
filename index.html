@@ -42,10 +42,15 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .btn-x{background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;padding:4px;transition:color .15s}
 .btn-x:hover{color:var(--red)}
 .site-nav{background:rgba(22,27,34,0.93);border-bottom:1px solid var(--border);backdrop-filter:blur(10px)}
-.nav-inner{max-width:760px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr))}
-.nav-btn{padding:12px 8px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:var(--text2);background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;transition:all .15s;text-align:center}
+.nav-inner{max-width:900px;margin:0 auto;display:flex;align-items:center;gap:0;flex-wrap:wrap}
+.nav-btn{flex:1 1 80px;padding:12px 8px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:var(--text2);background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;transition:all .15s;text-align:center}
 .nav-btn:hover{color:var(--text);background:rgba(255,255,255,0.03)}
 .nav-btn.active{color:var(--gold);border-bottom-color:var(--gold)}
+.comp-switch-wrap{flex:1.4 1 220px;padding:6px 8px;display:flex;align-items:center;gap:8px;border-left:1px solid var(--border)}
+.comp-switch-label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;white-space:nowrap}
+.comp-switch{width:100%;min-width:160px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:7px 10px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;color:var(--gold);outline:none;cursor:pointer}
+.comp-switch:focus{border-color:var(--gold)}
+@media(max-width:640px){.comp-switch-wrap{flex-basis:100%;border-left:none;border-top:1px solid var(--border)}.nav-btn{flex-basis:25%}}
 .screen{display:none}.screen.active{display:block}
 .auth-page{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem 1rem;background:radial-gradient(ellipse at top,#1c2128 0%,var(--bg) 60%)}
 .auth-logo{font-family:'Bebas Neue',sans-serif;font-size:3rem;letter-spacing:3px;color:var(--text);margin-bottom:4px;text-align:center}
@@ -228,6 +233,10 @@ select:focus{border-color:var(--blue)}
       <button class="nav-btn" onclick="switchTab('mytips',this)">🎫 Mé tipy</button>
       <button class="nav-btn" onclick="switchTab('leaderboard',this)">🏆 Žebříček</button>
       <button class="nav-btn" id="adminNavBtn" style="display:none" onclick="switchTab('admin',this)">⚙️ Admin</button>
+      <div class="comp-switch-wrap" id="compSwitchWrap" style="display:none">
+        <span class="comp-switch-label">Soutěž</span>
+        <select id="compSelect" class="comp-switch" onchange="switchCompetition(this.value)"></select>
+      </div>
     </div>
   </div>
   <div class="ticker-wrap" id="tickerBar" style="display:none">
@@ -263,7 +272,7 @@ const SUPABASE_URL='https://yrvfjrrjywvblkolwmnn.supabase.co';
 const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlydmZqcnJqeXd2Ymxrb2x3bW5uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxODk1NjYsImV4cCI6MjA5NDc2NTU2Nn0.tTNAjYnWoXVFqiQoMdxJPYO3CXup-JBmfvs08IWDK3Y';
 const ADMIN_USERNAME='Dany';
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
-let currentUser=null,currentComp=null,allMatches=[],allTips=[];
+let currentUser=null,currentComp=null,allCompetitions=[],allMatches=[],allTips=[];
 const pending={};
 
 window.addEventListener('load',async()=>{
@@ -319,9 +328,45 @@ function updateCreditsDisplay(){
 }
 
 async function loadActiveComp(){
-  const{data}=await sb.from('competitions').select('*').eq('active',true).order('created_at',{ascending:false}).limit(1);
-  if(data&&data.length>0){currentComp=data[0];document.getElementById('topComp').textContent=currentComp.name;}
+  const{data}=await sb.from('competitions').select('*').order('created_at',{ascending:false});
+  allCompetitions=data||[];
+  const savedId=localStorage.getItem('tip_comp');
+  currentComp=allCompetitions.find(c=>String(c.id)===String(savedId))||allCompetitions.find(c=>c.active)||allCompetitions[0]||null;
+  if(currentComp)localStorage.setItem('tip_comp',currentComp.id);
+  updateCompetitionSwitcher();
 }
+
+function updateCompetitionSwitcher(){
+  const top=document.getElementById('topComp');
+  const wrap=document.getElementById('compSwitchWrap');
+  const sel=document.getElementById('compSelect');
+  if(top)top.textContent=currentComp?currentComp.name:'Žádná soutěž';
+  if(!wrap||!sel)return;
+  if(!allCompetitions.length){wrap.style.display='none';sel.innerHTML='';return;}
+  wrap.style.display='flex';
+  sel.innerHTML=allCompetitions.map(c=>`<option value="${c.id}" ${currentComp&&c.id===currentComp.id?'selected':''}>${escapeHTML(c.name)} · ${escapeHTML(c.league||'')}</option>`).join('');
+}
+
+async function switchCompetition(id){
+  const comp=allCompetitions.find(c=>String(c.id)===String(id));
+  if(!comp)return;
+  currentComp=comp;
+  localStorage.setItem('tip_comp',comp.id);
+  updateCompetitionSwitcher();
+  await settleWinnings();
+  updateCreditsDisplay();
+  loadTicker();
+  await loadUpdates();
+  const visible=['matches','mytips','leaderboard','admin'].find(t=>{
+    const el=document.getElementById('tab-'+t);
+    return el&&el.style.display!=='none';
+  })||'matches';
+  if(visible==='matches')await renderMatches();
+  if(visible==='mytips')renderMyTips();
+  if(visible==='leaderboard')renderLeaderboard();
+  if(visible==='admin')renderAdmin();
+}
+
 
 
 function isPointsCompetition(comp=currentComp){
@@ -583,7 +628,7 @@ function isMatchOlderThanDays(match,days=2){
 
 async function renderMatches(){
   const el=document.getElementById('matchList');
-  if(!currentComp){el.innerHTML='<div class="empty">Žádná aktivní soutěž.</div>';return;}
+  if(!currentComp){el.innerHTML='<div class="empty">Žádná soutěž není vybraná.</div>';return;}
   const{data:matches}=await sb.from('matches').select('*').eq('competition_id',currentComp.id).order('match_date');
   if(!matches||!matches.length){el.innerHTML='<div class="empty">Zatím žádné zápasy.</div>';return;}
   const visibleMatches=matches.filter(m=>!isMatchOlderThanDays(m,2));
@@ -764,7 +809,7 @@ async function placeTip(mid){
 async function renderMyTips(){
   const el=document.getElementById('myTipsList');
   el.innerHTML='<div class="loading"><div class="spin"></div><br>Načítám...</div>';
-  if(!currentComp){el.innerHTML='<div class="empty">Žádná aktivní soutěž.</div>';return;}
+  if(!currentComp){el.innerHTML='<div class="empty">Žádná soutěž není vybraná.</div>';return;}
   const pointsMode=isPointsCompetition();
   const{data:matches}=await sb.from('matches').select('*').eq('competition_id',currentComp.id).order('match_date',{ascending:false});
   const{data:tips}=await sb.from('tips').select('*').eq('user_id',currentUser.id);
@@ -896,7 +941,7 @@ async function renderAdmin(){
     <div class="field"><label>Sezóna</label><input type="text" id="compSeason" placeholder="2025/26"></div>
     <button class="btn-a btn-g" onclick="createComp()" style="width:100%">Vytvořit soutěž</button>
   </div><div class="admin-box"><h3>Soutěže</h3>`;
-  if(comps&&comps.length){comps.forEach(c=>{html+=`<div class="comp-item"><span style="flex:1;font-weight:500;color:var(--text)">${c.name} · ${c.league} · ${isPointsCompetition(c)?'body':'kredity'}</span>${c.active?'<span class="comp-active">Aktivní</span>':`<button class="btn-a" style="font-size:11px;padding:3px 10px" onclick="activateComp('${c.id}')">Aktivovat</button>`}</div>`;});}
+  if(comps&&comps.length){comps.forEach(c=>{const selected=currentComp&&c.id===currentComp.id;html+=`<div class="comp-item"><span style="flex:1;font-weight:500;color:var(--text)">${c.name} · ${c.league} · ${isPointsCompetition(c)?'body':'kredity'}</span>${selected?'<span class="comp-active">Vybraná</span>':`<button class="btn-a" style="font-size:11px;padding:3px 10px" onclick="activateComp('${c.id}')">Přepnout</button>`}</div>`;});}
   else html+='<div class="empty">Žádné soutěže</div>';
   html+='</div>';
 
@@ -992,7 +1037,6 @@ async function createComp(){
   const season=document.getElementById('compSeason').value.trim();
   const scoring_mode=document.getElementById('compScoringMode')?.value||'credits';
   if(!name||!season){alert('Vyplň název a sezónu.');return;}
-  await sb.from('competitions').update({active:false}).neq('id','00000000-0000-0000-0000-000000000000');
   let payload={name,league,season,active:true,scoring_mode};
   let{data,error}=await sb.from('competitions').insert(payload).select().single();
   // Když v databázi ještě není sloupec scoring_mode, soutěž se vytvoří i bez něj.
@@ -1001,15 +1045,22 @@ async function createComp(){
     ({data,error}=await sb.from('competitions').insert({name,league,season,active:true}).select().single());
   }
   if(error){alert('Soutěž se nepodařilo vytvořit: '+error.message);return;}
-  if(data){currentComp=data;alert('Soutěž vytvořena!');renderAdmin();renderMatches();}
+  if(data){currentComp=data;localStorage.setItem('tip_comp',data.id);await loadActiveComp();alert('Soutěž vytvořena!');renderAdmin();renderMatches();}
 }
 
 async function activateComp(id){
-  await sb.from('competitions').update({active:false}).neq('id','00000000-0000-0000-0000-000000000000');
-  await sb.from('competitions').update({active:true}).eq('id',id);
   const{data}=await sb.from('competitions').select('*').eq('id',id).single();
-  if(data){currentComp=data;alert('Soutěž aktivována!');renderAdmin();renderMatches();}
+  if(data){
+    currentComp=data;
+    localStorage.setItem('tip_comp',data.id);
+    await loadActiveComp();
+    alert('Soutěž přepnuta!');
+    renderAdmin();
+    renderMatches();
+    renderLeaderboard();
+  }
 }
+
 
 async function addMatch(){
   const home=document.getElementById('mHome').value.trim();
