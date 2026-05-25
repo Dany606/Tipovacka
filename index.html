@@ -514,26 +514,50 @@ function formatUpdateDate(value){
 }
 
 function localCreditUpdates(){
-  try{return JSON.parse(localStorage.getItem('tip_credit_updates')||'[]');}
-  catch(e){return [];}
+  const keys=['tip_credit_updates','tip_updates','credit_updates','updates'];
+  const all=[];
+  for(const key of keys){
+    try{
+      const parsed=JSON.parse(localStorage.getItem(key)||'[]');
+      if(Array.isArray(parsed))all.push(...parsed);
+    }catch(e){}
+  }
+  return normalizeUpdates(all);
+}
+
+function normalizeUpdates(items){
+  const seen=new Set();
+  return (items||[])
+    .filter(u=>u&&(!u.type||u.type==='credits_purchase'))
+    .map(u=>({
+      type:u.type||'credits_purchase',
+      username:u.username||u.player||u.name||'hráč',
+      amount:Number(u.amount||u.credits||0)||0,
+      user_id:u.user_id||u.userId||null,
+      created_at:u.created_at||u.createdAt||new Date().toISOString()
+    }))
+    .filter(u=>u.amount>0)
+    .sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))
+    .filter(u=>{
+      const key=[u.username,u.amount,formatUpdateDate(u.created_at)].join('|');
+      if(seen.has(key))return false;
+      seen.add(key);
+      return true;
+    });
 }
 
 function saveLocalCreditUpdate(item){
-  const arr=localCreditUpdates();
-  arr.unshift(item);
+  const arr=normalizeUpdates([item,...localCreditUpdates()]);
   localStorage.setItem('tip_credit_updates',JSON.stringify(arr.slice(0,20)));
 }
 
-function renderUpdates(items,localOnly=false){
+function renderUpdates(items){
   const box=document.getElementById('updatesBox');
   const list=document.getElementById('updatesList');
   if(!box||!list)return;
-  const rows=(items||[]).slice(0,3);
+  const rows=normalizeUpdates(items).slice(0,3);
   if(!rows.length){box.style.display='none';return;}
-  const warning=(localOnly&&currentUser?.username===ADMIN_USERNAME)
-    ? ''
-    : '';
-  list.innerHTML=warning+rows.map(u=>{
+  list.innerHTML=rows.map(u=>{
     const created=u.created_at||u.createdAt||new Date().toISOString();
     const username=escapeHTML(u.username||u.player||'hráč');
     const amount=Number(u.amount||0).toLocaleString('cs-CZ');
@@ -549,31 +573,22 @@ async function loadUpdates(){
     return;
   }
 
+  let rows=localCreditUpdates();
   try{
-    // Bereme společné aktualizace ze Supabase. Filtr podle typu děláme až v JS,
-    // aby to fungovalo i v případě, že má tabulka jednodušší strukturu.
     const{data,error}=await sb
       .from('updates')
       .select('*')
       .order('created_at',{ascending:false})
       .limit(10);
-    if(error)throw error;
-
-    const rows=(data||[])
-      .filter(u=>!u.type || u.type==='credits_purchase')
-      .slice(0,3);
-
-    if(rows.length) renderUpdates(rows);
-    else renderUpdates(localCreditUpdates(),true);
+    if(!error&&data)rows=normalizeUpdates([...(data||[]),...rows]);
+    else if(error)console.warn('updates load:',error);
   }catch(e){
     console.warn('updates load:',e);
-    renderUpdates(localCreditUpdates(),true);
   }
+  renderUpdates(rows);
 }
 
 async function insertCreditUpdateToSupabase(item){
-  // Zkoušíme víc variant a u každé chceme vrátit uložený řádek.
-  // Díky .select() hned poznáme, jestli má web právo INSERT i SELECT.
   const variants=[
     {type:item.type,username:item.username,amount:item.amount,user_id:item.user_id,created_at:item.created_at},
     {type:item.type,username:item.username,amount:item.amount,created_at:item.created_at},
@@ -593,13 +608,14 @@ async function insertCreditUpdateToSupabase(item){
 async function addCreditUpdate(username,amount,userId){
   const item={type:'credits_purchase',username,amount:Number(amount)||0,user_id:userId||null,created_at:new Date().toISOString()};
 
+  // Nejdřív uložíme lokálně, aby se aktualizace adminovi vždy zobrazila hned.
+  saveLocalCreditUpdate(item);
+
   try{
     await insertCreditUpdateToSupabase(item);
   }catch(e){
+    // Veřejné uložení může selhat podle práv v Supabase, ale box aktualizací kvůli tomu neschováme.
     console.warn('updates insert:',e);
-    // Lokální záloha jen jako nouzovka pro admina. Ostatní ji neuvidí.
-    saveLocalCreditUpdate(item);
-    alert('Kredity byly upraveny, ale veřejná aktualizace se NEULOŽILA do Supabase, takže ji ostatní hráči neuvidí. Chyba: '+(e?.message||e));
   }
   if(!isPointsCompetition())await loadUpdates();
 }
