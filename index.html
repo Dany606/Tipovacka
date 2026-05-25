@@ -960,6 +960,22 @@ async function renderAdmin(){
       <div style="color:var(--text3);font-size:12px;margin:-2px 0 10px;line-height:1.4">Když kurzy vítěze nevyplníš, automaticky se dopočítají z kurzů 1X2.</div>`}
       <button class="btn-a btn-g" onclick="addMatch()" style="width:100%">Přidat zápas</button>
     </div>`;
+
+    if((matches||[]).length){
+      html+='<div class="admin-box"><h3>Přehled zápasů</h3><div style="color:var(--text3);font-size:12px;margin-bottom:10px;line-height:1.4">Duplicitní nebo chybně založený zápas smažeš křížkem. Smažou se i tipy navázané na daný zápas.</div>';
+      (matches||[]).forEach(m=>{
+        const statusLabel=m.status==='done'?'Ukončeno':isMatchLocked(m)?'Zamčeno':'Brzy';
+        const statusColor=m.status==='done'?'var(--green)':isMatchLocked(m)?'var(--red)':'var(--gold)';
+        html+=`<div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;display:flex;gap:10px;align-items:center">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHTML(m.home)} – ${escapeHTML(m.away)}</div>
+            <div style="color:var(--text3);font-size:12px;margin-top:3px">${escapeHTML(m.match_date)} · <span style="color:${statusColor}">${statusLabel}</span></div>
+          </div>
+          <button type="button" title="Smazat zápas" onclick="deleteMatch('${m.id}')" style="width:32px;height:32px;border-radius:50%;border:1px solid rgba(248,81,73,.45);background:rgba(248,81,73,.12);color:var(--red);font-size:18px;font-weight:800;line-height:1;cursor:pointer">×</button>
+        </div>`;
+      });
+      html+='</div>';
+    }
     if(!pointsMode){
       const oddsMatches=(matches||[]).filter(m=>m.status!=='done');
       if(oddsMatches.length){
@@ -1115,6 +1131,40 @@ async function saveMatchOdds(mid){
   alert('Kurzy uloženy.');
   await renderAdmin();
   await renderMatches();
+}
+
+
+async function deleteMatch(mid){
+  if(!currentUser||currentUser.username!==ADMIN_USERNAME){alert('Tahle akce je jen pro admina.');return;}
+  const match=(allMatches||[]).find(m=>m.id===mid);
+  const label=match?`${match.home} – ${match.away} (${match.match_date})`:'tento zápas';
+  const{data:tips,error:tipsErr}=await sb.from('tips').select('id').eq('match_id',mid);
+  if(tipsErr){alert('Nepodařilo se ověřit tipy u zápasu: '+tipsErr.message);return;}
+  const tipCount=(tips||[]).length;
+  let msg=`Opravdu chceš smazat zápas:
+${label}?`;
+  if(tipCount)msg+=`
+
+Pozor: smaže se i ${tipCount} tipů navázaných na tento zápas.`;
+  if(match&&match.status==='done')msg+='
+
+Zápas už je ukončený. Smazání automaticky nevrátí dříve připsané kredity.';
+  if(!confirm(msg))return;
+
+  if(tipCount){
+    const{error:delTipsErr}=await sb.from('tips').delete().eq('match_id',mid);
+    if(delTipsErr){alert('Tipy se nepodařilo smazat: '+delTipsErr.message);return;}
+  }
+  const{error}=await sb.from('matches').delete().eq('id',mid);
+  if(error){alert('Zápas se nepodařilo smazat: '+error.message);return;}
+
+  allMatches=(allMatches||[]).filter(m=>m.id!==mid);
+  allTips=(allTips||[]).filter(t=>t.match_id!==mid);
+  alert('Zápas smazán.');
+  await renderAdmin();
+  await renderMatches();
+  renderLeaderboard();
+  loadTicker();
 }
 
 async function saveResult(mid){
