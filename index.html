@@ -539,8 +539,21 @@ async function settleWinnings(){
   }
 }
 
+function parseJsonMaybe(value,fallback={}){
+  if(value&&typeof value==='object')return value;
+  if(typeof value==='string'){
+    try{return JSON.parse(value)||fallback;}catch(e){return fallback;}
+  }
+  return fallback;
+}
+
+function formatOddInput(value){
+  const n=parseFloat(value);
+  return Number.isFinite(n)?n.toFixed(2):'';
+}
+
 function getWinnerOdds(match,side){
-  const ro=match.regulation_odds||{};
+  const ro=parseJsonMaybe(match.regulation_odds,{});
   const fallbackHome=parseFloat(match.odds_home)*0.92;
   const fallbackAway=parseFloat(match.odds_away)*0.92;
   const od=side==='home'?parseFloat(ro.home||fallbackHome):parseFloat(ro.away||fallbackAway);
@@ -933,13 +946,48 @@ async function renderAdmin(){
       <div class="field"><label>Domácí</label><input type="text" id="mHome" placeholder="Colorado Avalanche"></div>
       <div class="field"><label>Hosté</label><input type="text" id="mAway" placeholder="Vegas Golden Knights"></div>
       <div class="field"><label>Datum</label><input type="text" id="mDate" placeholder="25.5.2026 02:00"></div>
-      ${pointsMode?'<div style="color:var(--gold);font-size:12px;margin-bottom:10px">Bodová soutěž bez kurzů: hráči tipují přesný výsledek.</div>':`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      ${pointsMode?'<div style="color:var(--gold);font-size:12px;margin-bottom:10px">Bodová soutěž bez kurzů: hráči tipují přesný výsledek.</div>':`<div class="tip-label">Výsledek základní hrací doby 1X2</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
         <div class="field"><label>Kurz dom.</label><input type="number" id="mOH" step="0.01" placeholder="1.85"></div>
         <div class="field"><label>Kurz rem.</label><input type="number" id="mOD" step="0.01" placeholder="3.80"></div>
         <div class="field"><label>Kurz host.</label><input type="number" id="mOA" step="0.01" placeholder="4.20"></div>
-      </div>`}
+      </div>
+      <div class="tip-label">Vítěz včetně prodloužení / nájezdů</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="field"><label>Kurz dom.</label><input type="number" id="mWH" step="0.01" placeholder="volitelné"></div>
+        <div class="field"><label>Kurz host.</label><input type="number" id="mWA" step="0.01" placeholder="volitelné"></div>
+      </div>
+      <div style="color:var(--text3);font-size:12px;margin:-2px 0 10px;line-height:1.4">Když kurzy vítěze nevyplníš, automaticky se dopočítají z kurzů 1X2.</div>`}
       <button class="btn-a btn-g" onclick="addMatch()" style="width:100%">Přidat zápas</button>
     </div>`;
+    if(!pointsMode){
+      const oddsMatches=(matches||[]).filter(m=>m.status!=='done');
+      if(oddsMatches.length){
+        html+='<div class="admin-box"><h3>Upravit kurzy ručně</h3><div style="color:var(--text3);font-size:12px;margin-bottom:10px;line-height:1.4">Kurzy se ukládají přímo k zápasu. Pozor: při vyhodnocení se použijí aktuálně uložené kurzy.</div>';
+        oddsMatches.forEach(m=>{
+          const ro=parseJsonMaybe(m.regulation_odds,{});
+          const wh=formatOddInput(ro.home||getWinnerOdds(m,'home'));
+          const wa=formatOddInput(ro.away||getWinnerOdds(m,'away'));
+          html+=`<div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px">
+            <div style="font-weight:500;margin-bottom:8px;color:var(--text)">${m.home} – ${m.away} <span style="color:var(--text3);font-size:12px">${m.match_date}</span></div>
+            <div class="tip-label">Výsledek základní hrací doby</div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px">
+              <input type="number" id="eo_h_${m.id}" step="0.01" min="1.01" value="${formatOddInput(m.odds_home)}" placeholder="Domácí" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px;color:var(--text);font-size:13px;outline:none">
+              <input type="number" id="eo_d_${m.id}" step="0.01" min="1.01" value="${formatOddInput(m.odds_draw)}" placeholder="Remíza" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px;color:var(--text);font-size:13px;outline:none">
+              <input type="number" id="eo_a_${m.id}" step="0.01" min="1.01" value="${formatOddInput(m.odds_away)}" placeholder="Hosté" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px;color:var(--text);font-size:13px;outline:none">
+            </div>
+            <div class="tip-label">Vítěz včetně prodloužení / nájezdů</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:start">
+              <input type="number" id="eo_wh_${m.id}" step="0.01" min="1.01" value="${wh}" placeholder="Domácí" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px;color:var(--text);font-size:13px;outline:none">
+              <input type="number" id="eo_wa_${m.id}" step="0.01" min="1.01" value="${wa}" placeholder="Hosté" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px;color:var(--text);font-size:13px;outline:none">
+              <button class="btn-a btn-g" onclick="saveMatchOdds('${m.id}')">Uložit kurzy</button>
+            </div>
+          </div>`;
+        });
+        html+='</div>';
+      }
+    }
+
     const pend=(matches||[]).filter(m=>m.status!=='done');
     if(pend.length){
       html+='<div class="admin-box"><h3>Zadat výsledky</h3>';
@@ -1034,15 +1082,39 @@ async function addMatch(){
   const away=document.getElementById('mAway').value.trim();
   const date=document.getElementById('mDate').value.trim();
   const pointsMode=isPointsCompetition();
-  let oh=1,od=1,oa=1;
+  let oh=1,od=1,oa=1,wh=null,wa=null;
   if(!pointsMode){
     oh=parseFloat(document.getElementById('mOH').value);
     od=parseFloat(document.getElementById('mOD').value);
     oa=parseFloat(document.getElementById('mOA').value);
+    wh=parseFloat(document.getElementById('mWH')?.value);
+    wa=parseFloat(document.getElementById('mWA')?.value);
   }
   if(!home||!away||!date||(!pointsMode&&(!oh||!od||!oa))){alert('Vyplň vše.');return;}
-  await sb.from('matches').insert({competition_id:currentComp.id,home,away,match_date:date,status:'upcoming',odds_home:oh,odds_draw:od,odds_away:oa});
+  if(!pointsMode&&(oh<=1||od<=1||oa<=1)){alert('Kurzy musí být větší než 1.');return;}
+  const payload={competition_id:currentComp.id,home,away,match_date:date,status:'upcoming',odds_home:oh,odds_draw:od,odds_away:oa};
+  if(!pointsMode&&Number.isFinite(wh)&&Number.isFinite(wa)&&wh>1&&wa>1)payload.regulation_odds={home:wh,away:wa};
+  await sb.from('matches').insert(payload);
   alert('Zápas přidán!');renderAdmin();renderMatches();
+}
+
+async function saveMatchOdds(mid){
+  if(!currentUser||currentUser.username!==ADMIN_USERNAME){alert('Tahle akce je jen pro admina.');return;}
+  const oh=parseFloat(document.getElementById('eo_h_'+mid)?.value);
+  const od=parseFloat(document.getElementById('eo_d_'+mid)?.value);
+  const oa=parseFloat(document.getElementById('eo_a_'+mid)?.value);
+  const wh=parseFloat(document.getElementById('eo_wh_'+mid)?.value);
+  const wa=parseFloat(document.getElementById('eo_wa_'+mid)?.value);
+  if(!Number.isFinite(oh)||!Number.isFinite(od)||!Number.isFinite(oa)||!Number.isFinite(wh)||!Number.isFinite(wa)){alert('Vyplň všechny kurzy.');return;}
+  if(oh<=1||od<=1||oa<=1||wh<=1||wa<=1){alert('Kurzy musí být větší než 1.');return;}
+  const payload={odds_home:oh,odds_draw:od,odds_away:oa,regulation_odds:{home:wh,away:wa}};
+  const{error}=await sb.from('matches').update(payload).eq('id',mid);
+  if(error){alert('Kurzy se nepodařilo uložit: '+error.message);return;}
+  const idx=allMatches.findIndex(m=>m.id===mid);
+  if(idx>=0)allMatches[idx]={...allMatches[idx],...payload};
+  alert('Kurzy uloženy.');
+  await renderAdmin();
+  await renderMatches();
 }
 
 async function saveResult(mid){
