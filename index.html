@@ -48,9 +48,11 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .nav-btn.active{color:var(--gold);border-bottom-color:var(--gold)}
 .comp-switch-wrap{flex:0 0 auto;padding:6px 8px;display:flex;align-items:center;gap:8px;border-left:1px solid var(--border)}
 .comp-switch-label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;white-space:nowrap}
-.comp-switch{width:auto;min-width:84px;max-width:130px;background:var(--bg);border:1px solid var(--gold);border-radius:var(--radius);padding:7px 28px 7px 10px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;color:var(--gold);outline:none;cursor:pointer;text-align:left}
-.comp-switch:focus{border-color:var(--gold);box-shadow:0 0 0 2px rgba(227,179,65,.18)}
-@media(max-width:640px){.comp-switch-wrap{flex-basis:auto;border-left:none;border-top:1px solid var(--border)}.nav-btn{flex-basis:25%}}
+.comp-tabs{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.comp-tab{min-width:44px;padding:7px 12px;border:1px solid var(--border2);border-radius:999px;background:rgba(13,17,23,.72);color:var(--text2);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;line-height:1;cursor:pointer;transition:all .15s;white-space:nowrap}
+.comp-tab:hover{color:var(--text);border-color:var(--gold);background:rgba(227,179,65,.08)}
+.comp-tab.active{color:var(--gold);border-color:var(--gold);background:rgba(227,179,65,.12);box-shadow:0 0 0 2px rgba(227,179,65,.08)}
+@media(max-width:640px){.comp-switch-wrap{flex-basis:100%;border-left:none;border-top:1px solid var(--border);justify-content:center}.nav-btn{flex-basis:25%}.comp-tabs{justify-content:center}}
 .screen{display:none}.screen.active{display:block}
 .auth-page{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem 1rem;background:radial-gradient(ellipse at top,#1c2128 0%,var(--bg) 60%)}
 .auth-logo{font-family:'Bebas Neue',sans-serif;font-size:3rem;letter-spacing:3px;color:var(--text);margin-bottom:4px;text-align:center}
@@ -235,7 +237,7 @@ select:focus{border-color:var(--blue)}
       <button class="nav-btn" id="adminNavBtn" style="display:none" onclick="switchTab('admin',this)">⚙️ Admin</button>
       <div class="comp-switch-wrap" id="compSwitchWrap" style="display:none">
         <span class="comp-switch-label">Soutěž</span>
-        <select id="compSelect" class="comp-switch" onchange="switchCompetition(this.value)"></select>
+        <div id="compTabs" class="comp-tabs"></div>
       </div>
     </div>
   </div>
@@ -247,14 +249,13 @@ select:focus{border-color:var(--blue)}
   <div id="tab-matches" class="page">
     <div class="rules-box">
       <h3>📋 Pravidla tipovačky</h3>
-      <div class="rules-grid">
+      <div class="rules-grid" id="rulesGrid">
         <div class="rule">💰 Start: <strong>10 000 kr</strong></div>
         <div class="rule">⬇️ Min sázka: <strong>100 kr</strong></div>
         <div class="rule">🏆 Vyhrává: <strong>nejvíc kreditů</strong></div>
         <div class="rule">🚫 Bankrot: <strong>0 kr = konec</strong></div>
       </div>
-      <div class="rules-note"><b>Výsledek základní doby (1X2)</b> — výhra = sázka × kurz &nbsp;·&nbsp; <b>Vítěz vč. prod./náj.</b> — výhra = sázka × kurz vítěze</div>
-      <div class="rules-note"><b>Bodová soutěž bez kurzů</b> — hráč tipuje přesný výsledek včetně prodloužení/nájezdů. Za zápas lze získat maximálně <b>5 bodů</b>. Pokud hráč trefí přesný výsledek, získá rovnou <b>+5 bodů</b> a další body se už nepřičítají. Pokud přesný výsledek netrefí, počítá se: správný vítěz <b>+1 bod</b>, přesný počet gólů domácího týmu <b>+1 bod</b>, přesný počet gólů hostujícího týmu <b>+1 bod</b>, špatný tip <b>0 bodů</b>.</div>
+      <div class="rules-note" id="rulesNote"><b>Výsledek základní doby (1X2)</b> — výhra = sázka × kurz &nbsp;·&nbsp; <b>Vítěz vč. prod./náj.</b> — výhra = sázka × kurz vítěze</div>
     </div>
     <div class="updates-box" id="updatesBox" style="display:none">
       <h3>📝 Aktualizace</h3>
@@ -361,12 +362,13 @@ function competitionShortLabel(comp){
 function updateCompetitionSwitcher(){
   const top=document.getElementById('topComp');
   const wrap=document.getElementById('compSwitchWrap');
-  const sel=document.getElementById('compSelect');
+  const tabs=document.getElementById('compTabs');
   if(top)top.textContent=currentComp?currentComp.name:'Žádná soutěž';
-  if(!wrap||!sel)return;
-  if(!allCompetitions.length){wrap.style.display='none';sel.innerHTML='';return;}
+  if(!wrap||!tabs)return;
+  if(!allCompetitions.length){wrap.style.display='none';tabs.innerHTML='';renderRules();return;}
   wrap.style.display='flex';
-  sel.innerHTML=allCompetitions.map(c=>`<option value="${c.id}" title="${escapeHTML((c.name||'')+' · '+(c.league||''))}" ${currentComp&&c.id===currentComp.id?'selected':''}>${escapeHTML(competitionShortLabel(c))}</option>`).join('');
+  tabs.innerHTML=allCompetitions.map(c=>`<button type="button" class="comp-tab ${currentComp&&String(c.id)===String(currentComp.id)?'active':''}" title="${escapeHTML((c.name||'')+' · '+(c.league||''))}" onclick="switchCompetition('${c.id}')">${escapeHTML(competitionShortLabel(c))}</button>`).join('');
+  renderRules();
 }
 
 async function switchCompetition(id){
@@ -390,6 +392,27 @@ async function switchCompetition(id){
 }
 
 
+
+function renderRules(){
+  const grid=document.getElementById('rulesGrid');
+  const note=document.getElementById('rulesNote');
+  if(!grid||!note)return;
+  if(isPointsCompetition()){
+    grid.innerHTML=`
+      <div class="rule">🎯 Tipuje se: <strong>přesný výsledek</strong></div>
+      <div class="rule">🏆 Vyhrává: <strong>nejvíc bodů</strong></div>
+      <div class="rule">⏱️ Výsledek: <strong>vč. prod./náj.</strong></div>
+      <div class="rule">🔝 Maximum: <strong>5 bodů / zápas</strong></div>`;
+    note.innerHTML='<b>Bodová soutěž bez kurzů</b> — pokud hráč trefí přesný výsledek, získá rovnou <b>+5 bodů</b> a další body se už nepřičítají. Pokud přesný výsledek netrefí, počítá se: správný vítěz včetně prodloužení/nájezdů <b>+1 bod</b>, přesný počet gólů domácího týmu <b>+1 bod</b>, přesný počet gólů hostujícího týmu <b>+1 bod</b>, špatný tip <b>0 bodů</b>.';
+  }else{
+    grid.innerHTML=`
+      <div class="rule">💰 Start: <strong>10 000 kr</strong></div>
+      <div class="rule">⬇️ Min sázka: <strong>100 kr</strong></div>
+      <div class="rule">🏆 Vyhrává: <strong>nejvíc kreditů</strong></div>
+      <div class="rule">🚫 Bankrot: <strong>0 kr = konec</strong></div>`;
+    note.innerHTML='<b>Výsledek základní doby (1X2)</b> — výhra = sázka × kurz &nbsp;·&nbsp; <b>Vítěz vč. prod./náj.</b> — výhra = sázka × kurz vítěze';
+  }
+}
 
 function isPointsCompetition(comp=currentComp){
   if(!comp)return false;
