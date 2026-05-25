@@ -241,15 +241,10 @@ select:focus{border-color:var(--blue)}
     </div>
   </div>
   <div id="tab-matches" class="page">
-    <div class="rules-box">
+    <div class="rules-box" id="rulesBox">
       <h3>📋 Pravidla tipovačky</h3>
-      <div class="rules-grid">
-        <div class="rule">💰 Start: <strong>10 000 kr</strong></div>
-        <div class="rule">⬇️ Min sázka: <strong>100 kr</strong></div>
-        <div class="rule">🏆 Vyhrává: <strong>nejvíc kreditů</strong></div>
-        <div class="rule">🚫 Bankrot: <strong>0 kr = konec</strong></div>
-      </div>
-      <div class="rules-note"><b>Výsledek základní doby (1X2)</b> — výhra = sázka × kurz &nbsp;·&nbsp; <b>Vítěz vč. prod./náj.</b> — výhra = sázka × kurz vítěze</div>
+      <div class="rules-grid" id="rulesGrid"></div>
+      <div class="rules-note" id="rulesNote"></div>
     </div>
     <div class="updates-box" id="updatesBox" style="display:none">
       <h3>📝 Aktualizace</h3>
@@ -311,6 +306,7 @@ async function openMain(){
   document.getElementById('topName').textContent=currentUser.username;
   if(currentUser.username===ADMIN_USERNAME)document.getElementById('adminNavBtn').style.display='block';
   await loadActiveComp();
+  renderRules();
   await settleWinnings();
   await updateCreditsDisplay();
   loadTicker();
@@ -368,6 +364,7 @@ async function switchCompetition(id){
   currentComp=selected;
   localStorage.setItem('tip_competition_id',id);
   renderCompetitionSwitch();
+  renderRules();
   await settleWinnings();
   await updateCreditsDisplay();
   await loadUpdates();
@@ -387,6 +384,29 @@ function isPointsCompetition(comp=currentComp){
   const league=String(comp.league||'').toLowerCase();
   const mode=String(comp.scoring_mode||comp.type||'').toLowerCase();
   return mode==='points'||mode==='bodova'||mode==='bodová'||league.includes('mistrovství')||league.includes('mistrovstvi');
+}
+
+function renderRules(){
+  const grid=document.getElementById('rulesGrid');
+  const note=document.getElementById('rulesNote');
+  if(!grid||!note)return;
+  if(isPointsCompetition()){
+    grid.innerHTML=`
+      <div class="rule">🎯 Tipuje se: <strong>přesný výsledek</strong></div>
+      <div class="rule">🏆 Vyhrává: <strong>nejvíc bodů</strong></div>
+      <div class="rule">✅ Správný vítěz: <strong>+1 bod</strong></div>
+      <div class="rule">🎯 Přesný výsledek: <strong>+5 bodů</strong></div>
+    `;
+    note.innerHTML='<b>Body navíc</b> — +1 bod za přesný počet gólů domácích a +1 bod za přesný počet gólů hostů. Kurzy, sázky, kredity a bankrot se v bodové soutěži nepoužívají.';
+  }else{
+    grid.innerHTML=`
+      <div class="rule">💰 Start: <strong>10 000 kr</strong></div>
+      <div class="rule">⬇️ Min sázka: <strong>100 kr</strong></div>
+      <div class="rule">🏆 Vyhrává: <strong>nejvíc kreditů</strong></div>
+      <div class="rule">🚫 Bankrot: <strong>0 kr = konec</strong></div>
+    `;
+    note.innerHTML='<b>Výsledek základní doby (1X2)</b> — výhra = sázka × kurz &nbsp;·&nbsp; <b>Vítěz vč. prod./náj.</b> — výhra = sázka × kurz vítěze';
+  }
 }
 
 function pointsLabel(){return 'Bodová soutěž bez kurzů';}
@@ -520,6 +540,11 @@ function renderUpdates(items){
 }
 
 async function loadUpdates(){
+  const box=document.getElementById('updatesBox');
+  if(isPointsCompetition()){
+    if(box)box.style.display='none';
+    return;
+  }
   try{
     const{data,error}=await sb.from('updates').select('*').eq('type','credits_purchase').order('created_at',{ascending:false}).limit(8);
     if(!error&&data){renderUpdates(data);return;}
@@ -536,7 +561,7 @@ async function addCreditUpdate(username,amount,userId){
     // Fallback: když v Supabase ještě není tabulka updates, aktualizace zůstane aspoň v prohlížeči admina.
     saveLocalCreditUpdate(item);
   }
-  await loadUpdates();
+  if(!isPointsCompetition())await loadUpdates();
 }
 
 async function settleWinnings(){
