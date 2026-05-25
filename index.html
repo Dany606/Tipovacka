@@ -545,42 +545,59 @@ async function loadUpdates(){
     if(box)box.style.display='none';
     return;
   }
+
   try{
+    // Bereme společné aktualizace ze Supabase. Filtr podle typu děláme až v JS,
+    // aby to fungovalo i v případě, že má tabulka jednodušší strukturu.
     const{data,error}=await sb
       .from('updates')
       .select('*')
-      .eq('type','credits_purchase')
       .order('created_at',{ascending:false})
-      .limit(8);
+      .limit(20);
     if(error)throw error;
 
-    // Pokud Supabase tabulka existuje, bereme ji jako hlavní zdroj pro všechny hráče.
-    // K lokálním aktualizacím se sáhne jen tehdy, když je tabulka prázdná,
-    // aby admin nepřišel o starší záznamy vytvořené před zapnutím veřejné tabulky.
-    if(data && data.length) renderUpdates(data);
+    const rows=(data||[])
+      .filter(u=>!u.type || u.type==='credits_purchase')
+      .slice(0,8);
+
+    if(rows.length) renderUpdates(rows);
     else renderUpdates(localCreditUpdates());
   }catch(e){
-    console.warn('updates:',e);
-    // Když tabulka updates v Supabase ještě neexistuje nebo nemá práva,
-    // zobrazíme aspoň lokální historii adminovi, aby box úplně nezmizel.
-    // Jakmile tabulku v Supabase doplníš, uvidí stejné aktualizace všichni.
+    console.warn('updates load:',e);
     renderUpdates(localCreditUpdates());
   }
+}
+
+async function insertCreditUpdateToSupabase(item){
+  // Zkoušíme víc variant, protože u některých Supabase projektů může být
+  // sloupec user_id jiné hodnoty / typu, nebo tabulka nemusí mít všechny sloupce.
+  const variants=[
+    item,
+    {type:item.type,username:item.username,amount:item.amount,created_at:item.created_at},
+    {username:item.username,amount:item.amount,created_at:item.created_at}
+  ];
+
+  let lastError=null;
+  for(const payload of variants){
+    const{error}=await sb.from('updates').insert(payload);
+    if(!error)return true;
+    lastError=error;
+    console.warn('updates insert variant failed:',error.message||error,payload);
+  }
+  throw lastError||new Error('Nepodařilo se uložit aktualizaci do Supabase.');
 }
 
 async function addCreditUpdate(username,amount,userId){
   const item={type:'credits_purchase',username,amount:Number(amount)||0,user_id:userId||null,created_at:new Date().toISOString()};
 
-  // Lokální záloha: díky tomu aktualizace nezmizí adminovi ani v případě,
-  // že Supabase tabulka updates ještě není vytvořená nebo nemá práva pro zápis.
+  // Lokální záloha: admin ji uvidí i v případě, že Supabase zápis selže.
   saveLocalCreditUpdate(item);
 
   try{
-    const{error}=await sb.from('updates').insert(item);
-    if(error)throw error;
+    await insertCreditUpdateToSupabase(item);
   }catch(e){
     console.warn('updates insert:',e);
-    alert('Kredity byly upraveny a aktualizace se ukáže aspoň u tebe. Aby ji viděli všichni hráči, je potřeba v Supabase vytvořit/povolit tabulku „updates“.');
+    alert('Kredity byly upraveny, ale veřejná aktualizace se neuložila do Supabase. Chyba: '+(e?.message||e));
   }
   if(!isPointsCompetition())await loadUpdates();
 }
