@@ -49,6 +49,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .comp-switch-wrap{flex:0 0 auto;padding:6px 8px;display:flex;align-items:center;gap:8px;border-left:1px solid var(--border)}
 .comp-switch-label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;white-space:nowrap}
 .comp-tabs{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.comp-switch-wrap select{display:none!important}
+.comp-switch-wrap{min-width:auto!important;gap:8px}
 .comp-tab{min-width:44px;padding:7px 12px;border:1px solid var(--border2);border-radius:999px;background:rgba(13,17,23,.72);color:var(--text2);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;line-height:1;cursor:pointer;transition:all .15s;white-space:nowrap}
 .comp-tab:hover{color:var(--text);border-color:var(--gold);background:rgba(227,179,65,.08)}
 .comp-tab.active{color:var(--gold);border-color:var(--gold);background:rgba(227,179,65,.12);box-shadow:0 0 0 2px rgba(227,179,65,.08)}
@@ -361,13 +363,31 @@ function competitionShortLabel(comp){
 
 function updateCompetitionSwitcher(){
   const top=document.getElementById('topComp');
-  const wrap=document.getElementById('compSwitchWrap');
-  const tabs=document.getElementById('compTabs');
+  let wrap=document.getElementById('compSwitchWrap');
   if(top)top.textContent=currentComp?currentComp.name:'Žádná soutěž';
+
+  // Tvrdá oprava starého rozbalovacího selectu: přepínač soutěží má být jen jako malé štítky MS/NHL/Extraliga.
+  if(wrap){
+    wrap.innerHTML='<span class="comp-switch-label">Soutěž</span><div id="compTabs" class="comp-tabs"></div>';
+  }
+  const tabs=document.getElementById('compTabs');
   if(!wrap||!tabs)return;
-  if(!allCompetitions.length){wrap.style.display='none';tabs.innerHTML='';renderRules();return;}
+
+  if(!allCompetitions.length){
+    wrap.style.display='none';
+    tabs.innerHTML='';
+    renderRules();
+    return;
+  }
+
   wrap.style.display='flex';
-  tabs.innerHTML=allCompetitions.map(c=>`<button type="button" class="comp-tab ${currentComp&&String(c.id)===String(currentComp.id)?'active':''}" title="${escapeHTML((c.name||'')+' · '+(c.league||''))}" onclick="switchCompetition('${c.id}')">${escapeHTML(competitionShortLabel(c))}</button>`).join('');
+  const unique=[];
+  const seen=new Set();
+  (allCompetitions||[]).forEach(c=>{
+    const key=competitionShortLabel(c);
+    if(!seen.has(String(c.id))){seen.add(String(c.id));unique.push(c);}
+  });
+  tabs.innerHTML=unique.map(c=>`<button type="button" class="comp-tab ${currentComp&&String(c.id)===String(currentComp.id)?'active':''}" title="${escapeHTML((c.name||'')+' · '+(c.league||''))}" onclick="switchCompetition('${c.id}')">${escapeHTML(competitionShortLabel(c))}</button>`).join('');
   renderRules();
 }
 
@@ -417,8 +437,10 @@ function renderRules(){
 function isPointsCompetition(comp=currentComp){
   if(!comp)return false;
   const league=String(comp.league||'').toLowerCase();
-  const mode=String(comp.scoring_mode||comp.type||'').toLowerCase();
-  return mode==='points'||mode==='bodova'||mode==='bodová'||league.includes('mistrovství')||league.includes('mistrovstvi');
+  const name=String(comp.name||'').toLowerCase();
+  const mode=String(comp.scoring_mode||comp.type||comp.scoringMode||'').toLowerCase();
+  const combined=(league+' '+name+' '+mode).trim();
+  return mode==='points'||mode==='bodova'||mode==='bodová'||mode==='body'||combined.includes('mistrovství')||combined.includes('mistrovstvi')||combined.includes('world championship')||combined.includes('ms ');
 }
 
 function pointsLabel(){return 'Bodová soutěž bez kurzů';}
