@@ -354,7 +354,7 @@ function renderCompetitionSwitch(){
   top.textContent=currentComp?currentComp.name:'Žádná aktivní soutěž';
   if(!sel)return;
   if(!allActiveComps||allActiveComps.length<2){sel.style.display='none';sel.innerHTML='';return;}
-  sel.innerHTML=allActiveComps.map(c=>`<option value="${c.id}" ${currentComp&&c.id===currentComp.id?'selected':''}>${escapeHTML(c.name)} · ${isPointsCompetition(c)?'body':'kredity'}</option>`).join('');
+  sel.innerHTML=allActiveComps.map(c=>`<option value="${c.id}" ${currentComp&&c.id===currentComp.id?'selected':''}>${escapeHTML(c.name)}</option>`).join('');
   sel.style.display='inline-block';
 }
 
