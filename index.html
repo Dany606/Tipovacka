@@ -863,7 +863,7 @@ async function renderMatches(){
             <label>${m.away}</label>
           </div>
           <div style="font-size:12px;color:var(--text3);padding:0 1rem 10px">Bodování: vítěz +1, přesný výsledek +5, přesné góly domácích +1, přesné góly hostů +1.</div>
-          <button type="button" class="btn-tip" onclick="placeTip('${m.id}')" id="tipBtn_${m.id}">${myTip?'✓ Aktualizovat tip':'Potvrdit tip →'}</button>
+          <button type="button" class="btn-tip" onclick="placeTip('${m.id}')" id="tipBtn_${m.id}" data-tip-key="${selDec?'decision':(sel?'outcome':'')}" data-tip-val="${selDec||sel||''}">${myTip?'✓ Aktualizovat tip':'Potvrdit tip →'}</button>
         </div>`;
       }else if(m.odds_home){
         const sel=pending[m.id]?.outcome||myTip?.outcome||'';
@@ -892,7 +892,7 @@ async function renderMatches(){
             <span class="stake-unit">kr</span>
             <span class="potential" id="pot_${m.id}"></span>
           </div>
-          <button type="button" class="btn-tip" onclick="placeTip('${m.id}')" id="tipBtn_${m.id}">${myTip?'✓ Aktualizovat tip':'Potvrdit tip →'}</button>
+          <button type="button" class="btn-tip" onclick="placeTip('${m.id}')" id="tipBtn_${m.id}" data-tip-key="${selDec?'decision':(sel?'outcome':'')}" data-tip-val="${selDec||sel||''}">${myTip?'✓ Aktualizovat tip':'Potvrdit tip →'}</button>
         </div>`;
       }
     }else if(!isDone&&matchStarted){
@@ -938,6 +938,11 @@ function selOpt(mid,key,val,btn){
   const hv=document.getElementById('tipval_'+mid);
   if(hk)hk.value=key;
   if(hv)hv.value=val;
+  const saveBtn=document.getElementById('tipBtn_'+mid);
+  if(saveBtn){
+    saveBtn.dataset.tipKey=key;
+    saveBtn.dataset.tipVal=val;
+  }
   const form=btn.closest('.tip-form')||btn.parentElement;
   if(form){
     form.dataset.tipKey=key;
@@ -995,28 +1000,39 @@ async function placeTip(mid){
   nc-=stake;
   let outcome=null,decision=null;
 
-  // Volbu čteme přes skryté pole, které se nastaví při každém kliknutí na kurz.
-  // To je nejspolehlivější i pro tipy „vítěz včetně prodloužení / nájezdů“.
-  const hiddenKey=document.getElementById('tipkey_'+mid)?.value||'';
-  const hiddenVal=document.getElementById('tipval_'+mid)?.value||'';
-  if(hiddenKey==='outcome'&&hiddenVal){
-    outcome=hiddenVal;
-  }else if(hiddenKey==='decision'&&hiddenVal){
-    decision=hiddenVal;
-  }else if(p.outcome){
-    outcome=p.outcome;
-  }else if(p.decision){
-    decision=p.decision;
-  }else{
-    const form=document.getElementById('tipForm_'+mid)||btn.closest('.tip-form')||btn.parentElement;
-    const selectedBtn=form?.querySelector('.odd-btn.sel, .odd-btn[aria-pressed="true"]');
-    const key=selectedBtn?.dataset?.tipKey;
-    const val=selectedBtn?.dataset?.tipVal;
-    if(key==='outcome'&&val)outcome=val;
-    else if(key==='decision'&&val)decision=val;
-    else if(existing){outcome=existing.outcome||null;decision=existing.decision||null;}
+  // Nejodolnější čtení výběru: nejdřív tlačítko uložit, potom skrytá pole, pending paměť a nakonec vizuálně označený kurz.
+  // Tohle opravuje hlavně tipy „vítěz včetně prodloužení / nájezdů“, které se dřív jen zvýraznily, ale neuložily.
+  const applyPick=(key,val)=>{
+    if(key==='outcome'&&val){outcome=val;decision=null;return true;}
+    if(key==='decision'&&val){decision=val;outcome=null;return true;}
+    return false;
+  };
+
+  const submitKey=btn?.dataset?.tipKey||'';
+  const submitVal=btn?.dataset?.tipVal||'';
+  applyPick(submitKey,submitVal);
+
+  if(!outcome&&!decision){
+    const hiddenKey=document.getElementById('tipkey_'+mid)?.value||'';
+    const hiddenVal=document.getElementById('tipval_'+mid)?.value||'';
+    applyPick(hiddenKey,hiddenVal);
   }
-  if(!outcome&&!decision){alert('Vyber tip.');btn.disabled=false;btn.textContent=existing?'✓ Aktualizovat tip':'Potvrdit tip →';return;}
+
+  if(!outcome&&!decision){
+    if(p.decision)applyPick('decision',p.decision);
+    else if(p.outcome)applyPick('outcome',p.outcome);
+  }
+
+  if(!outcome&&!decision){
+    const form=document.getElementById('tipForm_'+mid)||btn.closest('.tip-form')||btn.closest('.match-card')||document;
+    const selectedBtn=form?.querySelector('.odd-btn.sel, .odd-btn[aria-pressed="true"]');
+    applyPick(selectedBtn?.getAttribute('data-tip-key'),selectedBtn?.getAttribute('data-tip-val'));
+  }
+
+  if(!outcome&&!decision&&existing){
+    if(existing.decision)applyPick('decision',existing.decision);
+    else if(existing.outcome)applyPick('outcome',existing.outcome);
+  }
   const tipData={user_id:currentUser.id,match_id:mid,outcome,decision,goals:null,score_home:null,score_away:null,stake,settled:false,winnings:0};
   if(existing){await sb.from('tips').update(tipData).eq('id',existing.id);const idx=allTips.findIndex(t=>t.match_id===mid);allTips[idx]={...existing,...tipData};}
   else{const{data}=await sb.from('tips').insert(tipData).select().single();if(data)allTips.push(data);}
