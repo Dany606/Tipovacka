@@ -453,9 +453,9 @@ function renderRules(){
       <div class="rule">🎯 Tipuje se: <strong>přesný výsledek</strong></div>
       <div class="rule">🏆 Vyhrává: <strong>nejvíc bodů</strong></div>
       <div class="rule">✅ Správný vítěz: <strong>+1 bod</strong></div>
-      <div class="rule">🎯 Přesný výsledek: <strong>+5 bodů</strong></div>
+      <div class="rule">🎯 Přesný výsledek: <strong>+5 bodů max.</strong></div>
     `;
-    note.innerHTML='<b>Body navíc</b> — +1 bod za přesný počet gólů domácích a +1 bod za přesný počet gólů hostů. Kurzy, sázky, kredity a bankrot se v bodové soutěži nepoužívají.';
+    note.innerHTML='<b>Maximum za zápas je 5 bodů.</b> Když trefíš přesný výsledek, získáš 5 bodů a další body z tohoto zápasu už se nepřičítají. Pokud přesný výsledek netrefíš: +1 bod za správného vítěze, +1 bod za přesný počet gólů domácích a +1 bod za přesný počet gólů hostů. Po začátku zápasu už tip nejde změnit.';
   }else{
     grid.innerHTML=`
       <div class="rule">💰 Start: <strong>10 000 kr</strong></div>
@@ -475,14 +475,16 @@ function evaluatePointsTip(match,tip){
   const rh=Number(match.result_home),ra=Number(match.result_away);
   const th=Number(tip.score_home),ta=Number(tip.score_away);
   if(Number.isNaN(th)||Number.isNaN(ta))return null;
+  // Maximum za zápas je 5 bodů. Přesný výsledek má přednost a další body se už nepřičítají.
+  if(th===rh&&ta===ra)return 5;
+
   let points=0;
   const actualWinner=rh>ra?'home':rh<ra?'away':'draw';
   const tipWinner=th>ta?'home':th<ta?'away':'draw';
-  if(tipWinner===actualWinner)points+=1;                 // správný vítěz včetně prodloužení/nájezdů
-  if(th===rh&&ta===ra)points+=5;                         // přesný výsledek
+  if(tipWinner===actualWinner)points+=1;                 // správný vítěz
   if(th===rh)points+=1;                                  // přesný počet gólů domácích
   if(ta===ra)points+=1;                                  // přesný počet gólů hostů
-  return points;
+  return Math.min(points,5);
 }
 
 function switchTab(name,btn){
@@ -862,8 +864,8 @@ async function renderMatches(){
             <input type="number" class="stake-inp" id="sa_${m.id}" min="0" step="1" value="${sa}" placeholder="0" style="width:70px;text-align:center">
             <label>${m.away}</label>
           </div>
-          <div style="font-size:12px;color:var(--text3);padding:0 1rem 10px">Bodování: vítěz +1, přesný výsledek +5, přesné góly domácích +1, přesné góly hostů +1.</div>
-          <button type="button" class="btn-tip" onclick="placeTip('${m.id}')" id="tipBtn_${m.id}" data-tip-key="${selDec?'decision':(sel?'outcome':'')}" data-tip-val="${selDec||sel||''}">${myTip?'✓ Aktualizovat tip':'Potvrdit tip →'}</button>
+          <div style="font-size:12px;color:var(--text3);padding:0 1rem 10px">Bodování: přesný výsledek = 5 bodů max. Když trefíš přesně, další body se nepřičítají.</div>
+          <button type="button" class="btn-tip" onclick="placeTip('${m.id}')" id="tipBtn_${m.id}">${myTip?'✓ Aktualizovat tip':'Potvrdit tip →'}</button>
         </div>`;
       }else if(m.odds_home){
         const sel=pending[m.id]?.outcome||myTip?.outcome||'';
@@ -892,7 +894,7 @@ async function renderMatches(){
             <span class="stake-unit">kr</span>
             <span class="potential" id="pot_${m.id}"></span>
           </div>
-          <button type="button" class="btn-tip" onclick="placeTip('${m.id}')" id="tipBtn_${m.id}" data-tip-key="${selDec?'decision':(sel?'outcome':'')}" data-tip-val="${selDec||sel||''}">${myTip?'✓ Aktualizovat tip':'Potvrdit tip →'}</button>
+          <button type="button" class="btn-tip" onclick="placeTip('${m.id}')" id="tipBtn_${m.id}">${myTip?'✓ Aktualizovat tip':'Potvrdit tip →'}</button>
         </div>`;
       }
     }else if(!isDone&&matchStarted){
@@ -978,6 +980,21 @@ async function placeTip(mid){
   const existing=allTips.find(t=>t.match_id===mid);
   const btn=document.getElementById('tipBtn_'+mid);
   btn.disabled=true;btn.textContent='Ukládám...';
+
+  // Bezpečnostní kontrola i při samotném ukládání: po začátku zápasu už nejde tip založit ani aktualizovat.
+  // Nestačí jen schovat formulář, protože hráč může mít otevřenou starou stránku.
+  let currentMatch=allMatches.find(m=>m.id===mid);
+  if(!currentMatch){
+    const{data:freshMatch}=await sb.from('matches').select('*').eq('id',mid).single();
+    currentMatch=freshMatch;
+  }
+  if(isMatchLocked(currentMatch)){
+    alert('Zápas už začal, tip nejde uložit ani aktualizovat.');
+    btn.disabled=false;
+    btn.textContent=existing?'✓ Aktualizovat tip':'Potvrdit tip →';
+    await renderMatches();
+    return;
+  }
 
   if(pointsMode){
     const scoreHome=parseInt(document.getElementById('sh_'+mid)?.value,10);
