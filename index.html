@@ -440,9 +440,11 @@ function startMatchLockRefresh(){
   matchLockRefreshTimer=setInterval(()=>{
     const matchesTab=document.getElementById('tab-matches');
     if(currentUser&&currentComp&&matchesTab&&matchesTab.style.display!=='none'){
+      // DŮLEŽITÉ: nepřekreslovat celý seznam zápasů během psaní tipu.
+      // Původní renderMatches() každé 3 sekundy znovu načetl hodnoty ze Supabase
+      // a hráčům se rozepsaný přesný výsledek v inputech vracel na původní hodnoty / nulu.
+      // Tady jen zamkneme zápasy, kterým právě nastal čas začátku, a přepneme štítek na „Hraje se“.
       refreshVisibleMatchLocks();
-      // Každých pár sekund překreslíme data, aby se z Brzy stalo Hraje se i bez obnovení stránky.
-      renderMatches();
     }
   },3000);
 }
