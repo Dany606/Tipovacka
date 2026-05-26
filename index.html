@@ -853,7 +853,7 @@ async function renderMatches(){
       if(pointsMode){
         const sh=myTip?.score_home??'';
         const sa=myTip?.score_away??'';
-        html+=`<div class="tip-form">
+        html+=`<div class="tip-form" id="tipForm_${m.id}">
           <div class="tip-label">Tip přesného výsledku včetně prodloužení / nájezdů</div>
           <div class="stake-row" style="justify-content:flex-start;gap:8px">
             <label>${m.home}</label>
@@ -863,7 +863,7 @@ async function renderMatches(){
             <label>${m.away}</label>
           </div>
           <div style="font-size:12px;color:var(--text3);padding:0 1rem 10px">Bodování: vítěz +1, přesný výsledek +5, přesné góly domácích +1, přesné góly hostů +1.</div>
-          <button class="btn-tip" onclick="placeTip('${m.id}')" id="tipBtn_${m.id}">${myTip?'✓ Aktualizovat tip':'Potvrdit tip →'}</button>
+          <button type="button" class="btn-tip" onclick="placeTip('${m.id}')" id="tipBtn_${m.id}">${myTip?'✓ Aktualizovat tip':'Potvrdit tip →'}</button>
         </div>`;
       }else if(m.odds_home){
         const sel=pending[m.id]?.outcome||myTip?.outcome||'';
@@ -872,17 +872,19 @@ async function renderMatches(){
         const ro=m.regulation_odds||{};
         const oh=ro.home||(parseFloat(m.odds_home)*0.92).toFixed(2);
         const oa=ro.away||(parseFloat(m.odds_away)*0.92).toFixed(2);
-        html+=`<div class="tip-form">
+        html+=`<div class="tip-form" id="tipForm_${m.id}" data-match-id="${m.id}">
+          <input type="hidden" id="tipkey_${m.id}" value="${selDec?'decision':(sel?'outcome':'')}">
+          <input type="hidden" id="tipval_${m.id}" value="${selDec||sel||''}">
           <div class="tip-label">Výsledek základní hrací doby</div>
           <div class="odds-3">
-            <button class="odd-btn ${sel==='home'?'sel':''}" onclick="selOpt('${m.id}','outcome','home',this)"><div class="on">${m.home}</div><div class="ov">${parseFloat(m.odds_home).toFixed(2)}</div></button>
-            <button class="odd-btn ${sel==='draw'?'sel':''}" onclick="selOpt('${m.id}','outcome','draw',this)"><div class="on">Remíza</div><div class="ov">${parseFloat(m.odds_draw).toFixed(2)}</div></button>
-            <button class="odd-btn ${sel==='away'?'sel':''}" onclick="selOpt('${m.id}','outcome','away',this)"><div class="on">${m.away}</div><div class="ov">${parseFloat(m.odds_away).toFixed(2)}</div></button>
+            <button type="button" class="odd-btn ${sel==='home'?'sel':''}" data-tip-key="outcome" data-tip-val="home" onclick="selOpt('${m.id}','outcome','home',this)"><div class="on">${m.home}</div><div class="ov">${parseFloat(m.odds_home).toFixed(2)}</div></button>
+            <button type="button" class="odd-btn ${sel==='draw'?'sel':''}" data-tip-key="outcome" data-tip-val="draw" onclick="selOpt('${m.id}','outcome','draw',this)"><div class="on">Remíza</div><div class="ov">${parseFloat(m.odds_draw).toFixed(2)}</div></button>
+            <button type="button" class="odd-btn ${sel==='away'?'sel':''}" data-tip-key="outcome" data-tip-val="away" onclick="selOpt('${m.id}','outcome','away',this)"><div class="on">${m.away}</div><div class="ov">${parseFloat(m.odds_away).toFixed(2)}</div></button>
           </div>
           <div class="tip-label">Vítěz včetně prodloužení / nájezdů</div>
           <div class="odds-2">
-            <button class="odd-btn ${selDec==='home'?'sel':''}" onclick="selOpt('${m.id}','decision','home',this)"><div class="on">${m.home}</div><div class="ov">${parseFloat(oh).toFixed(2)}</div></button>
-            <button class="odd-btn ${selDec==='away'?'sel':''}" onclick="selOpt('${m.id}','decision','away',this)"><div class="on">${m.away}</div><div class="ov">${parseFloat(oa).toFixed(2)}</div></button>
+            <button type="button" class="odd-btn ${selDec==='home'?'sel':''}" data-tip-key="decision" data-tip-val="home" onclick="selOpt('${m.id}','decision','home',this)"><div class="on">${m.home}</div><div class="ov">${parseFloat(oh).toFixed(2)}</div></button>
+            <button type="button" class="odd-btn ${selDec==='away'?'sel':''}" data-tip-key="decision" data-tip-val="away" onclick="selOpt('${m.id}','decision','away',this)"><div class="on">${m.away}</div><div class="ov">${parseFloat(oa).toFixed(2)}</div></button>
           </div>
           <div class="stake-row">
             <label>Sázka</label>
@@ -890,7 +892,7 @@ async function renderMatches(){
             <span class="stake-unit">kr</span>
             <span class="potential" id="pot_${m.id}"></span>
           </div>
-          <button class="btn-tip" onclick="placeTip('${m.id}')" id="tipBtn_${m.id}">${myTip?'✓ Aktualizovat tip':'Potvrdit tip →'}</button>
+          <button type="button" class="btn-tip" onclick="placeTip('${m.id}')" id="tipBtn_${m.id}">${myTip?'✓ Aktualizovat tip':'Potvrdit tip →'}</button>
         </div>`;
       }
     }else if(!isDone&&matchStarted){
@@ -932,7 +934,11 @@ function selOpt(mid,key,val,btn){
     pending[mid].decision=val;
     delete pending[mid].outcome;
   }
-  const form=btn.closest('.tip-form');
+  const hk=document.getElementById('tipkey_'+mid);
+  const hv=document.getElementById('tipval_'+mid);
+  if(hk)hk.value=key;
+  if(hv)hv.value=val;
+  const form=btn.closest('.tip-form')||btn.parentElement;
   if(form){
     form.dataset.tipKey=key;
     form.dataset.tipVal=val;
@@ -989,32 +995,26 @@ async function placeTip(mid){
   nc-=stake;
   let outcome=null,decision=null;
 
-  // Volbu čteme robustně: nejdřív aktuální kliknutí, potom data uložená ve formuláři,
-  // potom označené tlačítko a až nakonec existující tip. Každý zápas může mít přesně 1 z 5 tipů.
-  if(p.outcome){
+  // Volbu čteme přes skryté pole, které se nastaví při každém kliknutí na kurz.
+  // To je nejspolehlivější i pro tipy „vítěz včetně prodloužení / nájezdů“.
+  const hiddenKey=document.getElementById('tipkey_'+mid)?.value||'';
+  const hiddenVal=document.getElementById('tipval_'+mid)?.value||'';
+  if(hiddenKey==='outcome'&&hiddenVal){
+    outcome=hiddenVal;
+  }else if(hiddenKey==='decision'&&hiddenVal){
+    decision=hiddenVal;
+  }else if(p.outcome){
     outcome=p.outcome;
   }else if(p.decision){
     decision=p.decision;
   }else{
-    const form=btn.closest('.tip-form');
-    const formKey=form?.dataset?.tipKey;
-    const formVal=form?.dataset?.tipVal;
-    if(formKey==='outcome'&&formVal){
-      outcome=formVal;
-    }else if(formKey==='decision'&&formVal){
-      decision=formVal;
-    }else{
-      const selectedBtn=form?.querySelector('.odd-btn.sel, .odd-btn[aria-pressed="true"]');
-      const clickCode=selectedBtn?.getAttribute('onclick')||'';
-      const match=clickCode.match(/selOpt\('[^']+',\s*'([^']+)',\s*'([^']+)'/);
-      if(match){
-        if(match[1]==='outcome')outcome=match[2];
-        else if(match[1]==='decision')decision=match[2];
-      }else if(existing){
-        outcome=existing.outcome||null;
-        decision=existing.decision||null;
-      }
-    }
+    const form=document.getElementById('tipForm_'+mid)||btn.closest('.tip-form')||btn.parentElement;
+    const selectedBtn=form?.querySelector('.odd-btn.sel, .odd-btn[aria-pressed="true"]');
+    const key=selectedBtn?.dataset?.tipKey;
+    const val=selectedBtn?.dataset?.tipVal;
+    if(key==='outcome'&&val)outcome=val;
+    else if(key==='decision'&&val)decision=val;
+    else if(existing){outcome=existing.outcome||null;decision=existing.decision||null;}
   }
   if(!outcome&&!decision){alert('Vyber tip.');btn.disabled=false;btn.textContent=existing?'✓ Aktualizovat tip':'Potvrdit tip →';return;}
   const tipData={user_id:currentUser.id,match_id:mid,outcome,decision,goals:null,score_home:null,score_away:null,stake,settled:false,winnings:0};
