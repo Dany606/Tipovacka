@@ -978,6 +978,9 @@ async function placeTip(mid){
   if(existing)nc+=existing.stake;
   nc-=stake;
   let outcome=null,decision=null;
+
+  // Nejdřív bereme volbu z paměti kliknutí. Když se ale stav po renderu ztratí
+  // nebo je volba jen vizuálně označená v HTML, dohledáme ji přímo z vybraného tlačítka.
   if(Object.prototype.hasOwnProperty.call(p,'outcome')){
     outcome=p.outcome||null;
     decision=null;
@@ -985,10 +988,24 @@ async function placeTip(mid){
     outcome=null;
     decision=p.decision||null;
   }else{
-    outcome=existing?.outcome||null;
-    decision=existing?.decision||null;
+    const form=btn.closest('.tip-form');
+    const selectedBtn=form?.querySelector('.odd-btn.sel');
+    const clickCode=selectedBtn?.getAttribute('onclick')||'';
+    const match=clickCode.match(/selOpt\('[^']+',\s*'([^']+)',\s*'([^']+)'/);
+    if(match){
+      if(match[1]==='outcome'){
+        outcome=match[2];
+        decision=null;
+      }else if(match[1]==='decision'){
+        outcome=null;
+        decision=match[2];
+      }
+    }else{
+      outcome=existing?.outcome||null;
+      decision=existing?.decision||null;
+    }
   }
-  if(!outcome&&!decision){alert('Vyber tip.');btn.disabled=false;btn.textContent=existing?'✓ Aktualizovat tip':'Uložit tip';return;}
+  if(!outcome&&!decision){alert('Vyber tip.');btn.disabled=false;btn.textContent=existing?'✓ Aktualizovat tip':'Potvrdit tip →';return;}
   const tipData={user_id:currentUser.id,match_id:mid,outcome,decision,goals:null,score_home:null,score_away:null,stake,settled:false,winnings:0};
   if(existing){await sb.from('tips').update(tipData).eq('id',existing.id);const idx=allTips.findIndex(t=>t.match_id===mid);allTips[idx]={...existing,...tipData};}
   else{const{data}=await sb.from('tips').insert(tipData).select().single();if(data)allTips.push(data);}
