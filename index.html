@@ -318,6 +318,7 @@ const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSI
 const ADMIN_USERNAME='Dany';
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 let currentUser=null,currentComp=null,allActiveComps=[],allMatches=[],allTips=[];
+let matchLockRefreshTimer=null;
 const pending={};
 
 window.addEventListener('load',async()=>{
@@ -367,6 +368,7 @@ async function openMain(){
   loadTicker();
   await loadUpdates();
   await renderMatches();
+  startMatchLockRefresh();
 }
 
 async function getCurrentUserPoints(){
@@ -433,6 +435,15 @@ async function switchCompetition(id){
   if(visibleLb)renderLeaderboard();
 }
 
+function startMatchLockRefresh(){
+  if(matchLockRefreshTimer)clearInterval(matchLockRefreshTimer);
+  matchLockRefreshTimer=setInterval(()=>{
+    const matchesTab=document.getElementById('tab-matches');
+    if(currentUser&&currentComp&&matchesTab&&matchesTab.style.display!=='none'){
+      renderMatches();
+    }
+  },15000);
+}
 
 function isPointsCompetition(comp=currentComp){
   if(!comp)return false;
@@ -836,7 +847,7 @@ async function renderMatches(){
     const isDone=m.status==='done';
     const locked=isMatchLocked(m);
     const sCls=m.status==='live'?'s-live':isDone?'s-done':locked?'s-live':'s-soon';
-    const sTxt=m.status==='live'?'● LIVE':isDone?'✓ Hotovo':locked?'🔒 Uzavřeno':'Brzy';
+    const sTxt=m.status==='live'?'● Hraje se':isDone?'✓ Hotovo':locked?'● Hraje se':'Brzy';
     html+=`<div class="match-card"><div class="match-head"><div><div class="match-teams">${m.home} – ${m.away}</div><div class="match-date">${m.match_date}</div></div><span class="${sCls}">${sTxt}</span></div>`;
     if(isDone&&m.result_home!==null){
       const dec=m.decision==='reg'?'Reg. čas':m.decision==='ot'?'Prodloužení':'Nájezdy';
@@ -891,7 +902,7 @@ async function renderMatches(){
         </div>`;
       }
     }else if(!isDone&&matchStarted){
-      html+=`<div style="padding:0.75rem 1rem;background:rgba(248,81,73,0.08);border-top:1px solid rgba(248,81,73,0.2);font-size:12px;color:var(--red);display:flex;align-items:center;gap:6px">🔒 Zápas již začal — tipování uzavřeno</div>`;
+      html+=`<div style="padding:0.75rem 1rem;background:rgba(227,179,65,0.08);border-top:1px solid rgba(227,179,65,0.22);font-size:12px;color:var(--gold);display:flex;align-items:center;gap:6px">🔒 Zápas už začal — tipování je uzavřeno</div>`;
       if(myTip){
         if(pointsMode){
           html+=`<div class="tip-result"><span>Tvůj tip: <strong>${myTip.score_home}:${myTip.score_away}</strong></span><span class="b-wait">⏳ Čeká na výsledek</span></div>`;
@@ -901,6 +912,7 @@ async function renderMatches(){
           html+=`<div class="tip-result"><span>Tvůj tip: <strong>${outLbl}</strong> · ${myTip.stake?.toLocaleString('cs-CZ')} kr</span><span class="b-wait">⏳ Čeká na výsledek</span></div>`;
         }
       }
+      html+=`<div style="padding:0 1rem 1rem"><button type="button" class="btn-tip" id="tipBtn_${m.id}" disabled>🔒 Tipování uzavřeno</button></div>`;
     }else if(isDone&&myTip){
       const res=evaluateTip(m,myTip);
       if(pointsMode){
