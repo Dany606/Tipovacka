@@ -923,16 +923,26 @@ async function renderMatches(){
 function selOpt(mid,key,val,btn){
   if(!pending[mid])pending[mid]={};
   // Jen jeden typ tipu najednou: klik na 1X2 zruší vítěze vč. prod., klik na vítěze zruší 1X2.
+  // Důležité: opačnou volbu MAŽEME, nenecháváme ji jako null.
+  // Předtím zůstalo pending[mid].outcome = null a ukládání pak ignorovalo zvolený tip na vítěze vč. prodloužení.
   if(key==='outcome'){
     pending[mid].outcome=val;
-    pending[mid].decision=null;
+    delete pending[mid].decision;
   }else if(key==='decision'){
     pending[mid].decision=val;
-    pending[mid].outcome=null;
+    delete pending[mid].outcome;
   }
   const form=btn.closest('.tip-form');
-  if(form)form.querySelectorAll('.odd-btn').forEach(b=>b.classList.remove('sel'));
+  if(form){
+    form.dataset.tipKey=key;
+    form.dataset.tipVal=val;
+    form.querySelectorAll('.odd-btn').forEach(b=>{
+      b.classList.remove('sel');
+      b.removeAttribute('aria-pressed');
+    });
+  }
   btn.classList.add('sel');
+  btn.setAttribute('aria-pressed','true');
   updatePotential(mid);
 }
 
@@ -940,9 +950,9 @@ function updatePotential(mid){
   const el=document.getElementById('pot_'+mid);if(!el)return;
   const m=allMatches.find(x=>x.id===mid);if(!m)return;
   const existing=allTips.find(t=>t.match_id===mid)||{};
-  const hasPending=pending[mid]&&Object.prototype.hasOwnProperty.call(pending[mid],'outcome')||pending[mid]&&Object.prototype.hasOwnProperty.call(pending[mid],'decision');
-  const outcome=hasPending?pending[mid]?.outcome:existing.outcome;
-  const decision=hasPending?pending[mid]?.decision:existing.decision;
+  const p=pending[mid]||{};
+  const outcome=p.outcome||(!p.decision?existing.outcome:null);
+  const decision=p.decision||(!p.outcome?existing.decision:null);
   const stake=parseInt(document.getElementById('st_'+mid)?.value||0);
   if(!stake){el.textContent='';return;}
   let odds=null;
@@ -975,34 +985,35 @@ async function placeTip(mid){
   if(stake>currentUser.credits){alert('Nedostatek kreditů!');btn.disabled=false;btn.textContent=existing?'✓ Aktualizovat tip':'Potvrdit tip →';return;}
   const p=pending[mid]||{};
   let nc=currentUser.credits;
-  if(existing)nc+=existing.stake;
+  if(existing)nc+=Number(existing.stake||0);
   nc-=stake;
   let outcome=null,decision=null;
 
-  // Nejdřív bereme volbu z paměti kliknutí. Když se ale stav po renderu ztratí
-  // nebo je volba jen vizuálně označená v HTML, dohledáme ji přímo z vybraného tlačítka.
-  if(Object.prototype.hasOwnProperty.call(p,'outcome')){
-    outcome=p.outcome||null;
-    decision=null;
-  }else if(Object.prototype.hasOwnProperty.call(p,'decision')){
-    outcome=null;
-    decision=p.decision||null;
+  // Volbu čteme robustně: nejdřív aktuální kliknutí, potom data uložená ve formuláři,
+  // potom označené tlačítko a až nakonec existující tip. Každý zápas může mít přesně 1 z 5 tipů.
+  if(p.outcome){
+    outcome=p.outcome;
+  }else if(p.decision){
+    decision=p.decision;
   }else{
     const form=btn.closest('.tip-form');
-    const selectedBtn=form?.querySelector('.odd-btn.sel');
-    const clickCode=selectedBtn?.getAttribute('onclick')||'';
-    const match=clickCode.match(/selOpt\('[^']+',\s*'([^']+)',\s*'([^']+)'/);
-    if(match){
-      if(match[1]==='outcome'){
-        outcome=match[2];
-        decision=null;
-      }else if(match[1]==='decision'){
-        outcome=null;
-        decision=match[2];
-      }
+    const formKey=form?.dataset?.tipKey;
+    const formVal=form?.dataset?.tipVal;
+    if(formKey==='outcome'&&formVal){
+      outcome=formVal;
+    }else if(formKey==='decision'&&formVal){
+      decision=formVal;
     }else{
-      outcome=existing?.outcome||null;
-      decision=existing?.decision||null;
+      const selectedBtn=form?.querySelector('.odd-btn.sel, .odd-btn[aria-pressed="true"]');
+      const clickCode=selectedBtn?.getAttribute('onclick')||'';
+      const match=clickCode.match(/selOpt\('[^']+',\s*'([^']+)',\s*'([^']+)'/);
+      if(match){
+        if(match[1]==='outcome')outcome=match[2];
+        else if(match[1]==='decision')decision=match[2];
+      }else if(existing){
+        outcome=existing.outcome||null;
+        decision=existing.decision||null;
+      }
     }
   }
   if(!outcome&&!decision){alert('Vyber tip.');btn.disabled=false;btn.textContent=existing?'✓ Aktualizovat tip':'Potvrdit tip →';return;}
