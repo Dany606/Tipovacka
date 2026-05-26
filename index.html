@@ -440,9 +440,11 @@ function startMatchLockRefresh(){
   matchLockRefreshTimer=setInterval(()=>{
     const matchesTab=document.getElementById('tab-matches');
     if(currentUser&&currentComp&&matchesTab&&matchesTab.style.display!=='none'){
+      refreshVisibleMatchLocks();
+      // Každých pár sekund překreslíme data, aby se z Brzy stalo Hraje se i bez obnovení stránky.
       renderMatches();
     }
-  },15000);
+  },3000);
 }
 
 function isPointsCompetition(comp=currentComp){
@@ -799,11 +801,14 @@ function evaluateTip(match,tip){
 
 function parseMatchDate(dateStr){
   if(!dateStr)return null;
-  const str=String(dateStr).trim();
-  let m=str.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})\s+(\d{1,2}):(\d{2})$/);
-  if(m)return new Date(Number(m[3]),Number(m[2])-1,Number(m[1]),Number(m[4]),Number(m[5]));
-  m=str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s](\d{1,2}):(\d{2}))?/);
-  if(m)return new Date(Number(m[1]),Number(m[2])-1,Number(m[3]),Number(m[4]||0),Number(m[5]||0));
+  let str=String(dateStr).trim();
+  // Podporuje tvary jako: 26.5.2026 20:20, 26. 5. 2026 20:20, 26.05.2026, 2026-05-26 20:20 i ISO.
+  // Důležité: čas bereme jako lokální čas zobrazený hráči, aby se zápas zamkl přesně v čase uvedeném na kartě.
+  str=str.replace(/ /g,' ').replace(/\s+/g,' ');
+  let m=str.match(/^(\d{1,2})\s*\.\s*(\d{1,2})\s*\.\s*(\d{4})(?:\s+(\d{1,2})\s*:\s*(\d{2}))?/);
+  if(m)return new Date(Number(m[3]),Number(m[2])-1,Number(m[1]),Number(m[4]||0),Number(m[5]||0),0,0);
+  m=str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s](\d{1,2})\s*:\s*(\d{2}))?/);
+  if(m)return new Date(Number(m[1]),Number(m[2])-1,Number(m[3]),Number(m[4]||0),Number(m[5]||0),0,0);
   const d=new Date(str);
   return Number.isNaN(d.getTime())?null:d;
 }
@@ -831,6 +836,37 @@ function isMatchLocked(match){
   return d.getTime() <= Date.now();
 }
 
+function lockMatchCardInDom(card){
+  if(!card||card.dataset.done==='1')return;
+  const status=card.querySelector('.match-head span');
+  if(status){
+    status.className='s-live';
+    status.textContent='● Hraje se';
+  }
+  card.querySelectorAll('input,button').forEach(el=>{
+    el.disabled=true;
+    el.classList.add('is-locked');
+  });
+  const btn=card.querySelector('.btn-tip');
+  if(btn)btn.textContent='🔒 Tipování uzavřeno';
+  if(!card.querySelector('.match-locked-note')){
+    const note=document.createElement('div');
+    note.className='match-locked-note';
+    note.style.cssText='margin:0 1rem 1rem;padding:10px 12px;border:1px solid rgba(227,179,65,.25);border-radius:8px;background:rgba(227,179,65,.08);color:var(--gold);font-size:12px;font-weight:700';
+    note.textContent='🔒 Zápas už začal — tipování je uzavřeno.';
+    const form=card.querySelector('.tip-form');
+    if(form)form.appendChild(note);
+    else card.appendChild(note);
+  }
+}
+
+function refreshVisibleMatchLocks(){
+  document.querySelectorAll('.match-card[data-match-date]').forEach(card=>{
+    const d=parseMatchDate(card.dataset.matchDate||card.getAttribute('data-match-date'));
+    if(d&&d.getTime()<=Date.now())lockMatchCardInDom(card);
+  });
+}
+
 async function renderMatches(){
   const el=document.getElementById('matchList');
   if(!currentComp){el.innerHTML='<div class="empty">Žádná aktivní soutěž.</div>';return;}
@@ -848,7 +884,7 @@ async function renderMatches(){
     const locked=isMatchLocked(m);
     const sCls=m.status==='live'?'s-live':isDone?'s-done':locked?'s-live':'s-soon';
     const sTxt=m.status==='live'?'● Hraje se':isDone?'✓ Hotovo':locked?'● Hraje se':'Brzy';
-    html+=`<div class="match-card"><div class="match-head"><div><div class="match-teams">${m.home} – ${m.away}</div><div class="match-date">${m.match_date}</div></div><span class="${sCls}">${sTxt}</span></div>`;
+    html+=`<div class="match-card" data-match-id="${m.id}" data-match-date="${escapeHTML(m.match_date)}" data-done="${isDone?'1':'0'}"><div class="match-head"><div><div class="match-teams">${m.home} – ${m.away}</div><div class="match-date">${m.match_date}</div></div><span class="${sCls}">${sTxt}</span></div>`;
     if(isDone&&m.result_home!==null){
       const dec=m.decision==='reg'?'Reg. čas':m.decision==='ot'?'Prodloužení':'Nájezdy';
       html+=`<div class="result-big">${m.result_home} : ${m.result_away}</div><div class="result-dec">${dec}</div>`;
@@ -926,7 +962,9 @@ async function renderMatches(){
     html+='</div>';
   });
   el.innerHTML=html;
+  refreshVisibleMatchLocks();
   if(!isPointsCompetition())allMatches.forEach(m=>{if(m.status!=='done')updatePotential(m.id);});
+  refreshVisibleMatchLocks();
 }
 
 function selOpt(mid,key,val,btn){
@@ -993,9 +1031,12 @@ async function placeTip(mid){
     const{data:freshMatch}=await sb.from('matches').select('*').eq('id',mid).single();
     if(freshMatch)currentMatch=freshMatch;
   }catch(e){}
-  if(isMatchLocked(currentMatch)){
+  const domDate=document.querySelector(`.match-card[data-match-id="${mid}"]`)?.dataset?.matchDate;
+  if(currentMatch&&(!currentMatch.match_date)&&domDate)currentMatch.match_date=domDate;
+  if(isMatchLocked(currentMatch)||isMatchLocked({match_date:domDate,status:currentMatch?.status})){
     alert('Zápas už začal, tip nejde uložit ani aktualizovat.');
-    if(btn){btn.disabled=false;btn.textContent=existing?'✓ Aktualizovat tip':'Potvrdit tip →';}
+    if(btn){btn.disabled=true;btn.textContent='🔒 Tipování uzavřeno';}
+    refreshVisibleMatchLocks();
     await renderMatches();
     return;
   }
