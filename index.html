@@ -204,6 +204,25 @@ select:focus{border-color:var(--blue)}
   .lb-name-cell{font-size:14px}
   .lb-pending{display:block;margin-top:2px}
 }
+
+/* Vychytávky: odpočet, mini statistika, síň slávy */
+.lock-countdown{margin:8px 1rem 0;display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid rgba(227,179,65,.28);background:rgba(227,179,65,.08);color:var(--gold);border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.2px}
+.lock-countdown.is-locked{color:var(--red);border-color:rgba(248,81,73,.35);background:rgba(248,81,73,.08)}
+.lb-extra-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.lb-extra-card{background:rgba(22,27,34,.88);border:1px solid var(--border);backdrop-filter:blur(6px);border-radius:var(--radius);padding:12px 14px}
+.lb-extra-title{font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:1px;color:var(--gold);margin-bottom:9px;display:flex;align-items:center;gap:7px}
+.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat-pill{background:rgba(13,17,23,.55);border:1px solid rgba(48,54,61,.9);border-radius:8px;padding:8px 9px;min-width:0}
+.stat-label{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stat-value{font-size:16px;font-weight:900;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stat-value.gold{color:var(--gold)}.stat-value.green{color:var(--green)}.stat-value.red{color:var(--red)}
+.hof-line{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid rgba(48,54,61,.75);font-size:13px}
+.hof-line:first-of-type{border-top:none;padding-top:0}
+.hof-name{font-weight:800;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hof-score{font-weight:900;color:var(--gold);white-space:nowrap}
+.hof-note{font-size:11px;color:var(--text3);margin-top:8px;line-height:1.35}
+@media(max-width:760px){.lb-extra-grid{grid-template-columns:1fr}.stat-grid{grid-template-columns:repeat(2,1fr)}}
+
 .empty{text-align:center;padding:2rem;color:var(--text3);font-size:13px}
 .sec-title{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1.35px;color:var(--gold);margin:1.25rem 0 .65rem;text-shadow:0 0 10px rgba(227,179,65,.35);display:flex;align-items:center;gap:6px}
 .sec-title::before{content:'';width:4px;height:14px;border-radius:999px;background:var(--gold);box-shadow:0 0 10px rgba(227,179,65,.5)}
@@ -923,6 +942,105 @@ function isMatchTodayOrFuture(match){
   return d.getTime() >= today.getTime();
 }
 
+
+function formatLockCountdown(match){
+  const d=parseMatchDate(match?.match_date||match);
+  if(!d)return '';
+  const diff=d.getTime()-Date.now();
+  if(diff<=0)return '🔒 Tipování uzavřeno';
+  const totalMin=Math.ceil(diff/60000);
+  const days=Math.floor(totalMin/1440);
+  const hours=Math.floor((totalMin%1440)/60);
+  const mins=totalMin%60;
+  if(days>0)return `⏳ Zamyká se za ${days} d ${hours} h`;
+  if(hours>0)return `⏳ Zamyká se za ${hours} h ${mins} min`;
+  return `⏳ Zamyká se za ${mins} min`;
+}
+
+function updateCountdownsInDom(){
+  document.querySelectorAll('.lock-countdown[data-lock-date]').forEach(el=>{
+    const d=parseMatchDate(el.dataset.lockDate||'');
+    if(!d)return;
+    const diff=d.getTime()-Date.now();
+    if(diff<=0){
+      el.textContent='🔒 Tipování uzavřeno';
+      el.classList.add('is-locked');
+      const card=el.closest('.match-card');
+      if(card)lockMatchCardInDom(card);
+    }else{
+      el.textContent=formatLockCountdown(el.dataset.lockDate);
+      el.classList.remove('is-locked');
+    }
+  });
+}
+
+function getActualWinner(match){
+  if(!match||match.result_home===null||match.result_home===undefined||match.result_away===null||match.result_away===undefined)return null;
+  const h=Number(match.result_home), a=Number(match.result_away);
+  if(h>a)return 'home';
+  if(a>h)return 'away';
+  return 'draw';
+}
+
+function isExactScoreTip(tip,match){
+  return tip&&match&&Number(tip.score_home)===Number(match.result_home)&&Number(tip.score_away)===Number(match.result_away);
+}
+
+function buildPlayerStats(playerName,ranked,allTipsForComp,matchById,pointsMode){
+  const row=(ranked||[]).find(r=>r.name===playerName)||{};
+  const player=(usersCache||[]).find(u=>u.username===playerName);
+  const playerTips=(allTipsForComp||[]).filter(t=>player&&t.user_id===player.id);
+  const settled=playerTips.filter(t=>t.settled);
+  const pending=playerTips.filter(t=>!t.settled);
+  if(pointsMode){
+    const exact=settled.filter(t=>isExactScoreTip(t,matchById[String(t.match_id)])).length;
+    const avg=settled.length?((Number(row.points||0)/settled.length).toFixed(1)):'0.0';
+    return {played:settled.length,pending:pending.length,main:`${Number(row.points||0)} bodů`,mainClass:'gold',avg,exact};
+  }
+  const won=settled.filter(t=>Number(t.winnings||0)>0).length;
+  const lost=settled.length-won;
+  const success=settled.length?Math.round(won/settled.length*100):0;
+  const profit=Number(row.profit||0);
+  return {played:settled.length,pending:pending.length,main:(profit>=0?'+':'')+profit.toLocaleString('cs-CZ')+' kr',mainClass:profit>=0?'green':'red',success,won,lost};
+}
+
+function renderPlayerStatsBox(ranked,allTipsForComp,matchById,pointsMode){
+  if(!currentUser)return '';
+  const st=buildPlayerStats(currentUser.username,ranked,allTipsForComp,matchById,pointsMode);
+  if(pointsMode){
+    return `<div class="lb-extra-card"><div class="lb-extra-title">📊 Moje statistika</div><div class="stat-grid">
+      <div class="stat-pill"><div class="stat-label">Body</div><div class="stat-value ${st.mainClass}">${st.main}</div></div>
+      <div class="stat-pill"><div class="stat-label">Vyhodnoceno</div><div class="stat-value">${st.played}</div></div>
+      <div class="stat-pill"><div class="stat-label">Čeká</div><div class="stat-value gold">${st.pending}</div></div>
+      <div class="stat-pill"><div class="stat-label">Přesné výsledky</div><div class="stat-value green">${st.exact}</div></div>
+      <div class="stat-pill"><div class="stat-label">Průměr / zápas</div><div class="stat-value">${st.avg}</div></div>
+    </div></div>`;
+  }
+  return `<div class="lb-extra-card"><div class="lb-extra-title">📊 Moje statistika</div><div class="stat-grid">
+    <div class="stat-pill"><div class="stat-label">Profit</div><div class="stat-value ${st.mainClass}">${st.main}</div></div>
+    <div class="stat-pill"><div class="stat-label">Vyhodnoceno</div><div class="stat-value">${st.played}</div></div>
+    <div class="stat-pill"><div class="stat-label">Čeká</div><div class="stat-value gold">${st.pending}</div></div>
+    <div class="stat-pill"><div class="stat-label">Úspěšnost</div><div class="stat-value green">${st.success}%</div></div>
+    <div class="stat-pill"><div class="stat-label">Výhry / prohry</div><div class="stat-value">${st.won}/${st.lost}</div></div>
+  </div></div>`;
+}
+
+function renderHallOfFameBox(ranked,compMatches,pointsMode){
+  const top=(ranked||[]).slice(0,3);
+  if(!top.length)return '';
+  const hasMatches=(compMatches||[]).length>0;
+  const allDone=hasMatches&&(compMatches||[]).every(m=>m.status==='done');
+  const title=allDone?'🏛️ Síň slávy':'🏛️ Síň slávy / aktuální pořadí';
+  const unit=pointsMode?'bodů':'kr';
+  const lines=top.map((p,i)=>{
+    const score=pointsMode?`${Number(p.points||0)} ${unit}`:`${Number(p.credits||0).toLocaleString('cs-CZ')} ${unit}`;
+    return `<div class="hof-line"><div class="hof-name">${i===0?(allDone?'👑':'🔥'):i===1?'🥈':'🥉'} ${escapeHTML(p.name)}</div><div class="hof-score">${score}</div></div>`;
+  }).join('');
+  const compName=escapeHTML(currentComp?.name||'aktuální soutěže');
+  const note=allDone?`Vítěz soutěže ${compName} je uložený podle finálního pořadí.`:`Soutěž ${compName} ještě běží, proto se tady ukazuje aktuální top 3. Po dohrání z toho bude finální síň slávy.`;
+  return `<div class="lb-extra-card"><div class="lb-extra-title">${title}</div>${lines}<div class="hof-note">${note}</div></div>`;
+}
+
 function isMatchLocked(match){
   if(!match)return false;
   if(match.status==='done'||match.status==='live')return true;
@@ -960,6 +1078,7 @@ function refreshVisibleMatchLocks(){
     const d=parseMatchDate(card.dataset.matchDate||card.getAttribute('data-match-date'));
     if(d&&d.getTime()<=Date.now())lockMatchCardInDom(card);
   });
+  updateCountdownsInDom();
 }
 
 async function renderMatches(){
@@ -979,7 +1098,7 @@ async function renderMatches(){
     const locked=isMatchLocked(m);
     const sCls=m.status==='live'?'s-live':isDone?'s-done':locked?'s-live':'s-soon';
     const sTxt=m.status==='live'?'● Hraje se':isDone?'✓ Hotovo':locked?'● Hraje se':'Brzy';
-    html+=`<div class="match-card" data-match-id="${m.id}" data-match-date="${escapeHTML(m.match_date)}" data-done="${isDone?'1':'0'}"><div class="match-head"><div><div class="match-teams">${m.home} – ${m.away}</div><div class="match-date">${m.match_date}</div></div><span class="${sCls}">${sTxt}</span></div>`;
+    html+=`<div class="match-card" data-match-id="${m.id}" data-match-date="${escapeHTML(m.match_date)}" data-done="${isDone?'1':'0'}"><div class="match-head"><div><div class="match-teams">${m.home} – ${m.away}</div><div class="match-date">${m.match_date}</div></div><span class="${sCls}">${sTxt}</span></div>${!isDone&&!locked?`<div class="lock-countdown" data-lock-date="${escapeHTML(m.match_date)}">${formatLockCountdown(m)}</div>`:''}`;
     if(isDone&&m.result_home!==null){
       const dec=m.decision==='reg'?'Reg. čas':m.decision==='ot'?'Prodloužení':'Nájezdy';
       html+=`<div class="result-big">${m.result_home} : ${m.result_away}</div><div class="result-dec">${dec}</div>`;
@@ -1257,6 +1376,7 @@ async function renderLeaderboard(){
   el.innerHTML='<div class="loading"><div class="spin"></div><br>Načítám...</div>';
   const pointsMode=isPointsCompetition();
   const{data:users}=await sb.from('users').select('*');
+  usersCache=users||[];
   const{data:tips}=await sb.from('tips').select('*');
   let compMatches=[];
   let compMatchIds=[];
@@ -1281,8 +1401,10 @@ async function renderLeaderboard(){
     const profit=u.credits-START_CREDITS;
     return{name:u.username,credits:u.credits,tipCount:mt.length,settledCount:settled.length,pending,pendingTips,roi,profit};
   }).sort((a,b)=>pointsMode?(b.points-a.points||b.tipCount-a.tipCount):(b.credits-a.credits));
+  const allTipsForComp=(tips||[]).filter(t=>!currentComp||compMatchIds.includes(t.match_id));
   const medals=['🥇','🥈','🥉'];
-  let html=`<div class="sec-title">Celkové pořadí</div><div class="lb-wrap"><table>
+  const extraHtml=`<div class="lb-extra-grid">${renderHallOfFameBox(ranked,compMatches,pointsMode)}${renderPlayerStatsBox(ranked,allTipsForComp,matchById,pointsMode)}</div>`;
+  let html=extraHtml+`<div class="sec-title">Celkové pořadí</div><div class="lb-wrap"><table>
     <colgroup>
       <col class="lb-rank-col">
       <col class="lb-name-col">
