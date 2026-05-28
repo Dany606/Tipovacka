@@ -206,7 +206,7 @@ select:focus{border-color:var(--blue)}
 }
 
 /* Vychytávky: odpočet, mini statistika, síň slávy */
-.lock-countdown{margin:8px 1rem 0;display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid rgba(227,179,65,.28);background:rgba(227,179,65,.08);color:var(--gold);border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.2px}
+.lock-countdown{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border:1px solid rgba(227,179,65,.35);background:#2d2a14;color:var(--gold);border-radius:20px;font-size:11px;font-weight:800;letter-spacing:.2px;white-space:nowrap}
 .lock-countdown.is-locked{color:var(--red);border-color:rgba(248,81,73,.35);background:rgba(248,81,73,.08)}
 .lb-extra-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
 .lb-extra-card{background:rgba(22,27,34,.88);border:1px solid var(--border);backdrop-filter:blur(6px);border-radius:var(--radius);padding:12px 14px}
@@ -214,7 +214,7 @@ select:focus{border-color:var(--blue)}
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px}
 .stat-pill{background:rgba(13,17,23,.55);border:1px solid rgba(48,54,61,.9);border-radius:8px;padding:8px 9px;min-width:0}
 .stat-label{font-size:10px;text-transform:uppercase;letter-spacing:.45px;color:var(--text3);margin-bottom:3px;white-space:normal;overflow:visible;text-overflow:clip;line-height:1.25;min-height:13px}
-.stat-value{font-size:16px;font-weight:900;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stat-value{font-size:16px;font-weight:900;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.stat-value.tip-common{font-size:15px;white-space:normal;line-height:1.2}
 .stat-value.gold{color:var(--gold)}.stat-value.green{color:var(--green)}.stat-value.red{color:var(--red)}
 .hof-line{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid rgba(48,54,61,.75);font-size:13px}
 .hof-line:first-of-type{border-top:none;padding-top:0}
@@ -943,18 +943,30 @@ function isMatchTodayOrFuture(match){
 }
 
 
+function formatCzechDays(days){
+  days=Math.max(1,Number(days)||1);
+  if(days===1)return '1 den';
+  if(days>=2&&days<=4)return `${days} dny`;
+  return `${days} dní`;
+}
+
+function pad2(n){return String(n).padStart(2,'0');}
+
 function formatLockCountdown(match){
   const d=parseMatchDate(match?.match_date||match);
   if(!d)return '';
   const diff=d.getTime()-Date.now();
-  if(diff<=0)return '🔒 Tipování uzavřeno';
-  const totalMin=Math.ceil(diff/60000);
-  const days=Math.floor(totalMin/1440);
-  const hours=Math.floor((totalMin%1440)/60);
-  const mins=totalMin%60;
-  if(days>0)return `⏳ Zamyká se za ${days} d ${hours} h`;
-  if(hours>0)return `⏳ Zamyká se za ${hours} h ${mins} min`;
-  return `⏳ Zamyká se za ${mins} min`;
+  if(diff<=0)return '● Hraje se';
+  const dayMs=24*60*60*1000;
+  if(diff>dayMs-1000){
+    const days=Math.max(1,Math.floor(diff/dayMs));
+    return `Začátek za ${formatCzechDays(days)}`;
+  }
+  const totalSec=Math.max(0,Math.floor(diff/1000));
+  const h=Math.floor(totalSec/3600);
+  const m=Math.floor((totalSec%3600)/60);
+  const sec=totalSec%60;
+  return `${pad2(h)}:${pad2(m)}:${pad2(sec)}`;
 }
 
 function updateCountdownsInDom(){
@@ -963,13 +975,14 @@ function updateCountdownsInDom(){
     if(!d)return;
     const diff=d.getTime()-Date.now();
     if(diff<=0){
-      el.textContent='🔒 Tipování uzavřeno';
+      el.textContent='● Hraje se';
       el.classList.add('is-locked');
+      el.className='s-live lock-countdown is-locked';
       const card=el.closest('.match-card');
       if(card)lockMatchCardInDom(card);
     }else{
       el.textContent=formatLockCountdown(el.dataset.lockDate);
-      el.classList.remove('is-locked');
+      el.className='s-soon lock-countdown';
     }
   });
 }
@@ -986,6 +999,27 @@ function isExactScoreTip(tip,match){
   return tip&&match&&Number(tip.score_home)===Number(match.result_home)&&Number(tip.score_away)===Number(match.result_away);
 }
 
+function getNormalizedScoreKey(tip){
+  if(tip?.score_home===null||tip?.score_home===undefined||tip?.score_away===null||tip?.score_away===undefined)return '';
+  const a=Number(tip.score_home);
+  const b=Number(tip.score_away);
+  if(Number.isNaN(a)||Number.isNaN(b))return '';
+  const lo=Math.min(a,b);
+  const hi=Math.max(a,b);
+  return `${hi}:${lo}`;
+}
+
+function getMostCommonScoreTip(playerTips){
+  const counts={};
+  (playerTips||[]).forEach(t=>{
+    const key=getNormalizedScoreKey(t);
+    if(key)counts[key]=(counts[key]||0)+1;
+  });
+  const best=Object.entries(counts).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))[0];
+  if(!best)return '–';
+  return best[1]>1?`${best[0]} (${best[1]}×)`:best[0];
+}
+
 function buildPlayerStats(playerName,ranked,allTipsForComp,matchById,pointsMode){
   const row=(ranked||[]).find(r=>r.name===playerName)||{};
   const player=(usersCache||[]).find(u=>u.username===playerName);
@@ -995,7 +1029,8 @@ function buildPlayerStats(playerName,ranked,allTipsForComp,matchById,pointsMode)
   if(pointsMode){
     const exact=settled.filter(t=>isExactScoreTip(t,matchById[String(t.match_id)])).length;
     const avg=settled.length?((Number(row.points||0)/settled.length).toFixed(1)):'0.0';
-    return {played:settled.length,pending:pending.length,main:`${Number(row.points||0)} bodů`,mainClass:'gold',avg,exact};
+    const commonTip=getMostCommonScoreTip(playerTips);
+    return {played:settled.length,pending:pending.length,main:`${Number(row.points||0)} bodů`,mainClass:'gold',avg,exact,commonTip};
   }
   const won=settled.filter(t=>Number(t.winnings||0)>0).length;
   const lost=settled.length-won;
@@ -1013,6 +1048,7 @@ function renderPlayerStatsBox(ranked,allTipsForComp,matchById,pointsMode){
       <div class="stat-pill"><div class="stat-label">Vyhodnoceno</div><div class="stat-value">${st.played}</div></div>
       <div class="stat-pill"><div class="stat-label">Čeká</div><div class="stat-value gold">${st.pending}</div></div>
       <div class="stat-pill"><div class="stat-label">Přesný výsledek</div><div class="stat-value green">${st.exact}</div></div>
+      <div class="stat-pill"><div class="stat-label">Nejčastější tip</div><div class="stat-value tip-common">${escapeHTML(st.commonTip)}</div></div>
       <div class="stat-pill"><div class="stat-label">Průměr / zápas</div><div class="stat-value">${st.avg}</div></div>
     </div></div>`;
   }
@@ -1053,7 +1089,7 @@ function lockMatchCardInDom(card){
   if(!card||card.dataset.done==='1')return;
   const status=card.querySelector('.match-head span');
   if(status){
-    status.className='s-live';
+    status.className=status.classList.contains('lock-countdown')?'s-live lock-countdown is-locked':'s-live';
     status.textContent='● Hraje se';
   }
   card.querySelectorAll('input,button').forEach(el=>{
@@ -1096,9 +1132,10 @@ async function renderMatches(){
     const myTip=allTips.find(t=>t.match_id===m.id);
     const isDone=m.status==='done';
     const locked=isMatchLocked(m);
-    const sCls=m.status==='live'?'s-live':isDone?'s-done':locked?'s-live':'s-soon';
-    const sTxt=m.status==='live'?'● Hraje se':isDone?'✓ Hotovo':locked?'● Hraje se':'Brzy';
-    html+=`<div class="match-card" data-match-id="${m.id}" data-match-date="${escapeHTML(m.match_date)}" data-done="${isDone?'1':'0'}"><div class="match-head"><div><div class="match-teams">${m.home} – ${m.away}</div><div class="match-date">${m.match_date}</div></div><span class="${sCls}">${sTxt}</span></div>${!isDone&&!locked?`<div class="lock-countdown" data-lock-date="${escapeHTML(m.match_date)}">${formatLockCountdown(m)}</div>`:''}`;
+    const statusAttr=!isDone?` data-lock-date="${escapeHTML(m.match_date)}"`:'';
+    const sCls=m.status==='live'?'s-live':isDone?'s-done':locked?'s-live':'s-soon lock-countdown';
+    const sTxt=m.status==='live'?'● Hraje se':isDone?'✓ Hotovo':locked?'● Hraje se':formatLockCountdown(m);
+    html+=`<div class="match-card" data-match-id="${m.id}" data-match-date="${escapeHTML(m.match_date)}" data-done="${isDone?'1':'0'}"><div class="match-head"><div><div class="match-teams">${m.home} – ${m.away}</div><div class="match-date">${m.match_date}</div></div><span class="${sCls}"${statusAttr}>${sTxt}</span></div>`;
     if(isDone&&m.result_home!==null){
       const dec=m.decision==='reg'?'Reg. čas':m.decision==='ot'?'Prodloužení':'Nájezdy';
       html+=`<div class="result-big">${m.result_home} : ${m.result_away}</div><div class="result-dec">${dec}</div>`;
