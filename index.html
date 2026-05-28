@@ -180,6 +180,17 @@ select:focus{border-color:var(--blue)}
 .lb-creds-cell{width:150px;font-size:16px;font-weight:800;font-variant-numeric:tabular-nums}
 .lb-roi-cell{width:96px;font-size:16px;font-weight:800;font-variant-numeric:tabular-nums}
 .lb-pending{font-size:10px;color:var(--gold);white-space:nowrap}
+.admin-pending-wrap{position:relative;display:inline-block;cursor:help}
+.admin-pending-wrap .lb-pending{text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px}
+.admin-pending-pop{display:none;position:absolute;right:0;top:calc(100% + 8px);z-index:1000;width:340px;max-width:80vw;background:rgba(13,17,23,.98);border:1px solid var(--border2);border-radius:10px;box-shadow:0 16px 40px rgba(0,0,0,.45);padding:10px;text-align:left;color:var(--text);white-space:normal}
+.admin-pending-wrap:hover .admin-pending-pop,.admin-pending-wrap:focus-within .admin-pending-pop{display:block}
+.admin-pending-title{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--gold);font-weight:800;margin-bottom:7px}
+.admin-pending-item{padding:7px 0;border-top:1px solid rgba(48,54,61,.75)}
+.admin-pending-item:first-of-type{border-top:none}
+.admin-pending-match{font-size:12px;font-weight:700;color:var(--text);line-height:1.25;margin-bottom:3px}
+.admin-pending-meta{font-size:11px;color:var(--text3);line-height:1.35}
+.admin-pending-tip{font-size:12px;color:var(--text2);line-height:1.35}
+.admin-pending-tip strong{color:var(--gold)}
 .roi-pos{color:var(--green)}.roi-neg{color:var(--red)}.roi-zero{color:var(--text2)}
 @media(max-width:520px){
   .lb-wrap{margin:0 -8px}
@@ -580,6 +591,43 @@ async function loadTicker(){
 
 function escapeHTML(str){
   return String(str??'').replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+}
+
+
+function formatAdminPendingTip(tip,match,pointsMode){
+  if(!match)return '';
+  const teams=escapeHTML(`${match.home} – ${match.away}`);
+  const date=escapeHTML(match.match_date||'');
+  let tipText='';
+  if(pointsMode){
+    tipText=`Přesný výsledek: <strong>${escapeHTML(tip.score_home)}:${escapeHTML(tip.score_away)}</strong>`;
+  }else{
+    const picked=tip.outcome||tip.decision;
+    const name=picked==='home'?match.home:picked==='away'?match.away:picked==='draw'?'Remíza':'–';
+    const type=tip.decision&&!tip.outcome?'vítěz vč. prod./náj.':'výsledek základní doby';
+    const stake=Number(tip.stake||0).toLocaleString('cs-CZ');
+    tipText=`${escapeHTML(type)}: <strong>${escapeHTML(name)}</strong> · ${stake} kr`;
+  }
+  return `<div class="admin-pending-item"><div class="admin-pending-match">${teams}</div><div class="admin-pending-meta">${date}</div><div class="admin-pending-tip">${tipText}</div></div>`;
+}
+
+function renderAdminPendingTooltip(playerName,pendingTips,matchById,pointsMode){
+  const count=pendingTips.length;
+  const pendingLabel=`<span class="lb-pending">(${count} čeká)</span>`;
+  if(currentUser.username!==ADMIN_USERNAME||!count)return pendingLabel;
+  const items=pendingTips
+    .slice()
+    .sort((a,b)=>{
+      const ma=matchById[String(a.match_id)]||{};
+      const mb=matchById[String(b.match_id)]||{};
+      const da=parseMatchDate(ma.match_date)?.getTime()||0;
+      const db=parseMatchDate(mb.match_date)?.getTime()||0;
+      return da-db;
+    })
+    .map(t=>formatAdminPendingTip(t,matchById[String(t.match_id)],pointsMode))
+    .filter(Boolean)
+    .join('')||'<div class="admin-pending-meta">Žádné čekající tipy.</div>';
+  return `<span class="admin-pending-wrap" tabindex="0">${pendingLabel}<span class="admin-pending-pop"><div class="admin-pending-title">Aktivní tipy hráče ${escapeHTML(playerName)}</div>${items}</span></span>`;
 }
 
 function formatUpdateDate(value){
@@ -1165,23 +1213,28 @@ async function renderLeaderboard(){
   const pointsMode=isPointsCompetition();
   const{data:users}=await sb.from('users').select('*');
   const{data:tips}=await sb.from('tips').select('*');
+  let compMatches=[];
   let compMatchIds=[];
+  const matchById={};
   if(currentComp){
-    const{data:compMatches}=await sb.from('matches').select('id').eq('competition_id',currentComp.id);
-    compMatchIds=(compMatches||[]).map(m=>m.id);
+    const{data:matchesForLeaderboard}=await sb.from('matches').select('*').eq('competition_id',currentComp.id);
+    compMatches=matchesForLeaderboard||[];
+    compMatchIds=compMatches.map(m=>m.id);
+    compMatches.forEach(m=>{matchById[String(m.id)]=m;});
   }
   const START_CREDITS=10000;
   const ranked=(users||[]).map(u=>{
     const mt=(tips||[]).filter(t=>t.user_id===u.id&&(!currentComp||compMatchIds.includes(t.match_id)));
     const settled=mt.filter(t=>t.settled);
-    const pending=Math.max(0,mt.length-settled.length);
+    const pendingTips=mt.filter(t=>!t.settled);
+    const pending=pendingTips.length;
     if(pointsMode){
       const points=settled.reduce((sum,t)=>sum+(Number(t.winnings)||0),0);
-      return{name:u.username,credits:u.credits,tipCount:mt.length,settledCount:settled.length,pending,points};
+      return{name:u.username,credits:u.credits,tipCount:mt.length,settledCount:settled.length,pending,pendingTips,points};
     }
     const roi=((u.credits-START_CREDITS)/START_CREDITS*100);
     const profit=u.credits-START_CREDITS;
-    return{name:u.username,credits:u.credits,tipCount:mt.length,settledCount:settled.length,pending,roi,profit};
+    return{name:u.username,credits:u.credits,tipCount:mt.length,settledCount:settled.length,pending,pendingTips,roi,profit};
   }).sort((a,b)=>pointsMode?(b.points-a.points||b.tipCount-a.tipCount):(b.credits-a.credits));
   const medals=['🥇','🥈','🥉'];
   let html=`<div class="sec-title">Celkové pořadí</div><div class="lb-wrap"><table>
@@ -1206,7 +1259,7 @@ async function renderLeaderboard(){
       html+=`<tr class="${isMe?'me':''}">
         <td class="lb-rank-cell"><span class="lb-rank-badge ${i>2?'lb-rank-num':''}">${medals[i]||i+1}</span></td>
         <td class="lb-name-cell">${p.name}${isMe?'<span class="lb-me">ty</span>':''}</td>
-        <td class="lb-tips-cell r">${p.tipCount} <span class="lb-pending">(${p.pending} čeká)</span></td>
+        <td class="lb-tips-cell r">${p.tipCount} ${renderAdminPendingTooltip(p.name,p.pendingTips||[],matchById,pointsMode)}</td>
         <td class="lb-creds-cell r" style="color:var(--gold)">${p.points} bodů</td>
         <td class="lb-roi-cell r roi-zero">${avg}</td>
       </tr>`;
@@ -1217,7 +1270,7 @@ async function renderLeaderboard(){
       html+=`<tr class="${isMe?'me':''}">
         <td class="lb-rank-cell"><span class="lb-rank-badge ${i>2?'lb-rank-num':''}">${medals[i]||i+1}</span></td>
         <td class="lb-name-cell">${p.name}${isMe?'<span class="lb-me">ty</span>':''}</td>
-        <td class="lb-tips-cell r">${p.tipCount} <span class="lb-pending">(${p.pending} čeká)</span></td>
+        <td class="lb-tips-cell r">${p.tipCount} ${renderAdminPendingTooltip(p.name,p.pendingTips||[],matchById,pointsMode)}</td>
         <td class="lb-creds-cell r" style="color:${credColor}">${p.credits.toLocaleString('cs-CZ')} kr</td>
         <td class="lb-roi-cell r ${roiCls}">${roiStr}</td>
       </tr>`;
