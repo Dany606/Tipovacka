@@ -216,6 +216,12 @@ select:focus{border-color:var(--blue)}
 .stat-label{font-size:10px;text-transform:uppercase;letter-spacing:.45px;color:var(--text3);margin-bottom:3px;white-space:normal;overflow:visible;text-overflow:clip;line-height:1.25;min-height:13px}
 .stat-value{font-size:16px;font-weight:900;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.stat-value.tip-common{font-size:15px;white-space:normal;line-height:1.2}
 .stat-value.gold{color:var(--gold)}.stat-value.green{color:var(--green)}.stat-value.red{color:var(--red)}
+.stat-value.streak{color:var(--gold);font-size:15px}
+.exact-celebration{position:relative;display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,rgba(227,179,65,.26),rgba(63,185,80,.16));color:var(--gold);border:1px solid rgba(227,179,65,.62);font-size:12px;font-weight:900;padding:4px 11px;border-radius:999px;box-shadow:0 0 18px rgba(227,179,65,.18);animation:exactPulse 1.7s ease-in-out infinite}
+.exact-celebration::before,.exact-celebration::after{content:'✦';position:absolute;top:-9px;color:var(--gold);font-size:10px;opacity:.9;animation:exactSpark 1.4s ease-in-out infinite}
+.exact-celebration::before{left:10px}.exact-celebration::after{right:10px;animation-delay:.35s}
+@keyframes exactPulse{0%,100%{transform:scale(1);box-shadow:0 0 14px rgba(227,179,65,.16)}50%{transform:scale(1.035);box-shadow:0 0 24px rgba(227,179,65,.36)}}
+@keyframes exactSpark{0%,100%{transform:translateY(0) scale(.9);opacity:.45}50%{transform:translateY(-4px) scale(1.25);opacity:1}}
 .hof-line{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid rgba(48,54,61,.75);font-size:13px}
 .hof-line:first-of-type{border-top:none;padding-top:0}
 .hof-name{font-weight:800;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1025,6 +1031,18 @@ function getMostCommonScoreTip(playerTips){
   return best[1]>1?`${best[0]} (${best[1]}×)`:best[0];
 }
 
+function getPlayerPointStreaks(playerTips,matchById){
+  const settled=(playerTips||[])
+    .filter(t=>t&&t.settled&&matchById[String(t.match_id)])
+    .sort((a,b)=>parseMatchDate(matchById[String(a.match_id)]?.match_date)-parseMatchDate(matchById[String(b.match_id)]?.match_date));
+  let best=0,run=0;
+  settled.forEach(t=>{
+    const pts=Number(t.winnings||0);
+    if(pts>0){run++;best=Math.max(best,run);}else{run=0;}
+  });
+  return {current:run,best};
+}
+
 function buildPlayerStats(playerName,ranked,allTipsForComp,matchById,pointsMode){
   const row=(ranked||[]).find(r=>r.name===playerName)||{};
   const player=(usersCache||[]).find(u=>u.username===playerName);
@@ -1035,7 +1053,8 @@ function buildPlayerStats(playerName,ranked,allTipsForComp,matchById,pointsMode)
     const exact=settled.filter(t=>isExactScoreTip(t,matchById[String(t.match_id)])).length;
     const avg=settled.length?((Number(row.points||0)/settled.length).toFixed(1)):'0.0';
     const commonTip=getMostCommonScoreTip(playerTips);
-    return {played:settled.length,pending:pending.length,main:`${Number(row.points||0)} bodů`,mainClass:'gold',avg,exact,commonTip};
+    const streaks=getPlayerPointStreaks(playerTips,matchById);
+    return {played:settled.length,pending:pending.length,main:`${Number(row.points||0)} bodů`,mainClass:'gold',avg,exact,commonTip,streakCurrent:streaks.current,streakBest:streaks.best};
   }
   const won=settled.filter(t=>Number(t.winnings||0)>0).length;
   const lost=settled.length-won;
@@ -1054,6 +1073,8 @@ function renderPlayerStatsBox(ranked,allTipsForComp,matchById,pointsMode){
       <div class="stat-pill"><div class="stat-label">Čeká</div><div class="stat-value gold">${st.pending}</div></div>
       <div class="stat-pill"><div class="stat-label">Přesný výsledek</div><div class="stat-value green">${st.exact}</div></div>
       <div class="stat-pill"><div class="stat-label">Nejčastější tip</div><div class="stat-value tip-common">${escapeHTML(st.commonTip)}</div></div>
+      <div class="stat-pill"><div class="stat-label">Aktuální série</div><div class="stat-value streak">${st.streakCurrent}× bodoval</div></div>
+      <div class="stat-pill"><div class="stat-label">Nejdelší série</div><div class="stat-value streak">${st.streakBest}×</div></div>
       <div class="stat-pill"><div class="stat-label">Průměr / zápas</div><div class="stat-value">${st.avg}</div></div>
     </div></div>`;
   }
@@ -1208,7 +1229,9 @@ async function renderMatches(){
     }else if(isDone&&myTip){
       const res=evaluateTip(m,myTip);
       if(pointsMode){
-        html+=`<div class="tip-result"><span>Tvůj tip: <strong>${myTip.score_home}:${myTip.score_away}</strong></span>${res===null?'<span class="b-wait">⏳ Čeká</span>':res>0?`<span class="b-won">✓ +${Math.round(res)} bodů</span>`:'<span class="b-lost">0 bodů</span>'}</div>`;
+        const exactHit=isExactScoreTip(myTip,m);
+        const badge=res===null?'<span class="b-wait">⏳ Čeká</span>':exactHit?`<span class="exact-celebration">🎉 Přesný výsledek! +5 bodů</span>`:res>0?`<span class="b-won">✓ +${Math.round(res)} bodů</span>`:'<span class="b-lost">0 bodů</span>';
+        html+=`<div class="tip-result"><span>Tvůj tip: <strong>${myTip.score_home}:${myTip.score_away}</strong></span>${badge}</div>`;
       }else{
         const inf=myTip.outcome||myTip.decision;
         const outLbl=inf==='home'?m.home:inf==='away'?m.away:'Remíza';
@@ -1381,7 +1404,8 @@ async function renderMyTips(){
     let resultBadge='';
     if(pointsMode){
       tipLine=`<span style="font-size:12px;color:var(--text2)">Tip: <strong style="color:var(--text)">${t.score_home}:${t.score_away}</strong></span><span style="font-size:11px;color:var(--text3)">přesný výsledek</span>`;
-      resultBadge=res===null?'<span class="b-wait">⏳ Čeká</span>':res>0?`<span class="b-won">+${Math.round(res)} bodů</span>`:'<span class="b-lost">0 bodů</span>';
+      const exactHit=isExactScoreTip(t,m);
+      resultBadge=res===null?'<span class="b-wait">⏳ Čeká</span>':exactHit?'<span class="exact-celebration">🎉 Přesný výsledek! +5 bodů</span>':res>0?`<span class="b-won">+${Math.round(res)} bodů</span>`:'<span class="b-lost">0 bodů</span>';
     }else{
       const inf=t.outcome||t.decision;
       const outLbl=inf==='home'?m.home:inf==='away'?m.away:inf==='draw'?'Remíza':'–';
