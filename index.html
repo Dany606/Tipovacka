@@ -467,16 +467,20 @@ async function switchCompetition(id){
 
 function startMatchLockRefresh(){
   if(matchLockRefreshTimer)clearInterval(matchLockRefreshTimer);
-  matchLockRefreshTimer=setInterval(()=>{
+
+  const tick=()=>{
     const matchesTab=document.getElementById('tab-matches');
     if(currentUser&&currentComp&&matchesTab&&matchesTab.style.display!=='none'){
-      // DŮLEŽITÉ: nepřekreslovat celý seznam zápasů během psaní tipu.
-      // Původní renderMatches() každé 3 sekundy znovu načetl hodnoty ze Supabase
-      // a hráčům se rozepsaný přesný výsledek v inputech vracel na původní hodnoty / nulu.
-      // Tady jen zamkneme zápasy, kterým právě nastal čas začátku, a přepneme štítek na „Hraje se“.
+      // Nepřekreslovat celý seznam zápasů během psaní tipu.
+      // Jen plynule aktualizovat odpočet a při startu zápasu zamknout formulář.
       refreshVisibleMatchLocks();
     }
-  },3000);
+  };
+
+  tick();
+  // Běží častěji než 1× za sekundu, aby se vizuál trefoval přesně na změnu vteřiny
+  // a odpočet nepůsobil zaseknutě ani při drobném zpoždění prohlížeče.
+  matchLockRefreshTimer=setInterval(tick,250);
 }
 
 function isPointsCompetition(comp=currentComp){
@@ -981,7 +985,8 @@ function updateCountdownsInDom(){
       const card=el.closest('.match-card');
       if(card)lockMatchCardInDom(card);
     }else{
-      el.textContent=formatLockCountdown(el.dataset.lockDate);
+      const nextText=formatLockCountdown(el.dataset.lockDate);
+      if(el.textContent!==nextText)el.textContent=nextText;
       el.className='s-soon lock-countdown';
     }
   });
