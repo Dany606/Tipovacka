@@ -211,9 +211,9 @@ select:focus{border-color:var(--blue)}
 .lb-extra-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
 .lb-extra-card{background:rgba(22,27,34,.88);border:1px solid var(--border);backdrop-filter:blur(6px);border-radius:var(--radius);padding:12px 14px}
 .lb-extra-title{font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:1px;color:var(--gold);margin-bottom:9px;display:flex;align-items:center;gap:7px}
-.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px}
 .stat-pill{background:rgba(13,17,23,.55);border:1px solid rgba(48,54,61,.9);border-radius:8px;padding:8px 9px;min-width:0}
-.stat-label{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stat-label{font-size:10px;text-transform:uppercase;letter-spacing:.45px;color:var(--text3);margin-bottom:3px;white-space:normal;overflow:visible;text-overflow:clip;line-height:1.25;min-height:13px}
 .stat-value{font-size:16px;font-weight:900;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .stat-value.gold{color:var(--gold)}.stat-value.green{color:var(--green)}.stat-value.red{color:var(--red)}
 .hof-line{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid rgba(48,54,61,.75);font-size:13px}
@@ -221,7 +221,7 @@ select:focus{border-color:var(--blue)}
 .hof-name{font-weight:800;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hof-score{font-weight:900;color:var(--gold);white-space:nowrap}
 .hof-note{font-size:11px;color:var(--text3);margin-top:8px;line-height:1.35}
-@media(max-width:760px){.lb-extra-grid{grid-template-columns:1fr}.stat-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:760px){.lb-extra-grid{grid-template-columns:1fr}.stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.stat-label{font-size:9px;letter-spacing:.25px}}
 
 .empty{text-align:center;padding:2rem;color:var(--text3);font-size:13px}
 .sec-title{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1.35px;color:var(--gold);margin:1.25rem 0 .65rem;text-shadow:0 0 10px rgba(227,179,65,.35);display:flex;align-items:center;gap:6px}
@@ -1012,7 +1012,7 @@ function renderPlayerStatsBox(ranked,allTipsForComp,matchById,pointsMode){
       <div class="stat-pill"><div class="stat-label">Body</div><div class="stat-value ${st.mainClass}">${st.main}</div></div>
       <div class="stat-pill"><div class="stat-label">Vyhodnoceno</div><div class="stat-value">${st.played}</div></div>
       <div class="stat-pill"><div class="stat-label">Čeká</div><div class="stat-value gold">${st.pending}</div></div>
-      <div class="stat-pill"><div class="stat-label">Přesné výsledky</div><div class="stat-value green">${st.exact}</div></div>
+      <div class="stat-pill"><div class="stat-label">Přesný výsledek</div><div class="stat-value green">${st.exact}</div></div>
       <div class="stat-pill"><div class="stat-label">Průměr / zápas</div><div class="stat-value">${st.avg}</div></div>
     </div></div>`;
   }
