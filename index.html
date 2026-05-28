@@ -182,7 +182,7 @@ select:focus{border-color:var(--blue)}
 .lb-pending{font-size:10px;color:var(--gold);white-space:nowrap}
 .admin-pending-wrap{position:relative;display:inline-block;cursor:help}
 .admin-pending-wrap .lb-pending{text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px}
-.admin-pending-pop{display:none;position:absolute;right:0;top:calc(100% + 8px);z-index:1000;width:340px;max-width:80vw;background:rgba(13,17,23,.98);border:1px solid var(--border2);border-radius:10px;box-shadow:0 16px 40px rgba(0,0,0,.45);padding:10px;text-align:left;color:var(--text);white-space:normal}
+.admin-pending-pop{display:none;position:fixed;left:12px;top:12px;z-index:99999;width:340px;max-width:calc(100vw - 24px);max-height:60vh;overflow:auto;background:rgba(13,17,23,.98);border:1px solid var(--border2);border-radius:10px;box-shadow:0 16px 40px rgba(0,0,0,.55);padding:10px;text-align:left;color:var(--text);white-space:normal}
 .admin-pending-wrap:hover .admin-pending-pop,.admin-pending-wrap:focus-within .admin-pending-pop{display:block}
 .admin-pending-title{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--gold);font-weight:800;margin-bottom:7px}
 .admin-pending-item{padding:7px 0;border-top:1px solid rgba(48,54,61,.75)}
@@ -609,6 +609,51 @@ function formatAdminPendingTip(tip,match,pointsMode){
     tipText=`${escapeHTML(type)}: <strong>${escapeHTML(name)}</strong> · ${stake} kr`;
   }
   return `<div class="admin-pending-item"><div class="admin-pending-match">${teams}</div><div class="admin-pending-meta">${date}</div><div class="admin-pending-tip">${tipText}</div></div>`;
+}
+
+
+function positionAdminPendingTooltip(wrap){
+  const pop=wrap?.querySelector?.('.admin-pending-pop');
+  if(!pop)return;
+  const gap=10;
+  const vw=window.innerWidth||document.documentElement.clientWidth;
+  const vh=window.innerHeight||document.documentElement.clientHeight;
+  const wr=wrap.getBoundingClientRect();
+
+  // Dočasně zobrazíme neviditelně, abychom znali skutečnou velikost okna.
+  const oldDisplay=pop.style.display;
+  const oldVisibility=pop.style.visibility;
+  pop.style.display='block';
+  pop.style.visibility='hidden';
+  const pr=pop.getBoundingClientRect();
+
+  let left=wr.right-pr.width;
+  if(left<gap) left=gap;
+  if(left+pr.width>vw-gap) left=Math.max(gap,vw-pr.width-gap);
+
+  let top=wr.bottom+gap;
+  // Když by tooltip přetekl dolů, otevře se nad řádkem.
+  if(top+pr.height>vh-gap){
+    top=wr.top-pr.height-gap;
+  }
+  // Když se nevejde ani nad, držíme ho uvnitř obrazovky.
+  if(top<gap) top=Math.max(gap, vh-pr.height-gap);
+
+  pop.style.left=Math.round(left)+'px';
+  pop.style.top=Math.round(top)+'px';
+  pop.style.visibility=oldVisibility;
+  pop.style.display=oldDisplay;
+}
+
+function bindAdminPendingTooltips(){
+  document.querySelectorAll('.admin-pending-wrap').forEach(wrap=>{
+    if(wrap.dataset.tooltipBound==='1')return;
+    wrap.dataset.tooltipBound='1';
+    const update=()=>requestAnimationFrame(()=>positionAdminPendingTooltip(wrap));
+    wrap.addEventListener('mouseenter',update);
+    wrap.addEventListener('mousemove',update);
+    wrap.addEventListener('focusin',update);
+  });
 }
 
 function renderAdminPendingTooltip(playerName,pendingTips,matchById,pointsMode){
@@ -1397,6 +1442,7 @@ async function renderAdmin(){
     }
   }
   el.innerHTML=html;
+  bindAdminPendingTooltips();
 }
 
 
