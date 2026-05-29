@@ -474,22 +474,38 @@ select:focus{border-color:var(--blue)}
 
 
 
-<style id="support-qr-spacing-final">
-/* QR podpora – přesně menší mezery nad i pod boxem */
+
+
+
+<style id="support-qr-layout-gap-hard-fix">
+/* Zrušení velké mezery mezi horními boxy, QR podporou a celkovým pořadím */
 .lb-extra-grid{
+  align-items: stretch !important;
   gap: 10px !important;
-}
-.lb-extra-grid .support-box{
-  margin-top: 0 !important;
   margin-bottom: 8px !important;
 }
-.support-box{
-  padding-top: .62rem !important;
-  padding-bottom: .62rem !important;
+.lb-extra-card{
+  min-height: 0 !important;
 }
-.support-box + .sec-title,
-.lb-extra-grid + .sec-title{
+.lb-extra-grid .support-box{
+  grid-column: 1 / -1 !important;
+  min-height: 0 !important;
+  height: auto !important;
+  margin: 0 !important;
+  padding: .62rem .85rem !important;
+}
+.support-box{
+  min-height: 0 !important;
+}
+.support-content{
+  min-height: 0 !important;
+}
+.sec-title{
   margin-top: 8px !important;
+  margin-bottom: 8px !important;
+}
+.lb-wrap{
+  margin-top: 0 !important;
 }
 </style>
 
