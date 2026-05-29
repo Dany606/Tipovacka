@@ -1899,7 +1899,7 @@ async function resetRulesFromAdmin(){
 }
 
 function updateKindText(u){
-  if((u.type||'')==='manual')return escapeHTML(u.message||u.text||'');
+  if(u.message||u.text)return escapeHTML(u.message||u.text||'');
   const username=escapeHTML(u.username||u.player||'hráč');
   const amount=Number(u.amount||0).toLocaleString('cs-CZ');
   return `Hráč <strong>${username}</strong> si zakoupil <strong>${amount} kreditů</strong>.`;
@@ -1910,7 +1910,8 @@ function normalizeAllUpdates(items){
   return (items||[])
     .filter(Boolean)
     .map(u=>{
-      const type=u.type||((u.message||u.text)?'manual':'credits_purchase');
+      const hasMessage=!!(u.message||u.text);
+      const type=u.type || (hasMessage ? 'manual' : 'credits_purchase');
       return {
         id:u.id||null,
         type,
@@ -1922,7 +1923,7 @@ function normalizeAllUpdates(items){
         created_at:u.created_at||u.createdAt||new Date().toISOString()
       };
     })
-    .filter(u=>u.type==='manual' ? !!u.message : u.amount>0)
+    .filter(u=>u.message || u.amount>0)
     .filter(u=>!u.competition_id || !currentComp || u.competition_id===currentComp.id)
     .sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))
     .filter(u=>{
@@ -1964,6 +1965,25 @@ async function deleteManualUpdate(id){
   renderAdmin();
 }
 
+
+async function publishLocalUpdatesToSupabase(){
+  const rows=localCreditUpdates();
+  if(!rows.length){alert('V tomto prohlížeči nejsou žádné lokální aktualizace k publikování.');return;}
+  let ok=0,fail=0;
+  for(const r of rows){
+    try{
+      await insertCreditUpdateToSupabase({...r,competition_id:r.competition_id||currentComp?.id||null});
+      ok++;
+    }catch(e){
+      console.warn('publish local update failed:',e);
+      fail++;
+    }
+  }
+  alert(`Publikováno do Supabase: ${ok}. Chyby: ${fail}.`);
+  await loadUpdates();
+  renderAdmin();
+}
+
 function renderRulesUpdatesAdminBox(){
   const d=currentRulesOverride||defaultRulesDataForCompetition();
   return `<div class="admin-box admin-rules-updates-box"><h3>Pravidla a aktualizace</h3>
@@ -1981,7 +2001,7 @@ function renderRulesUpdatesAdminBox(){
         <div class="tip-label">Ruční aktualizace pro hráče</div>
         <div class="field"><label>Text aktualizace</label><textarea id="manualUpdateText" rows="4" placeholder="Např. Dnes večer doplním výsledky po 22:00."></textarea></div>
         <button class="btn-a btn-g" onclick="insertManualUpdate()" style="width:100%">Přidat aktualizaci</button>
-        <div class="admin-small-note">Zakoupení kreditů se do aktualizací zapisuje dál automaticky. Ruční řádky slouží jako zprávy pro hráče.</div>
+        <div class="admin-small-note">Zakoupení kreditů se do aktualizací zapisuje dál automaticky. Ruční řádky slouží jako zprávy pro hráče.</div><button class="btn-a" onclick="publishLocalUpdatesToSupabase()" style="width:100%;margin-top:8px">Publikovat lokální aktualizace do Supabase</button>
         <div id="adminManualUpdatesList"></div>
       </div>
     </div>
@@ -2266,22 +2286,32 @@ async function loadUpdates(){
     return;
   }
 
-  let rows=localCreditUpdates();
+  let rows=[];
   try{
-    let q=sb.from('updates').select('*').order('created_at',{ascending:false}).limit(20);
-    const{data,error}=await q;
-    if(!error&&data)rows=normalizeAllUpdates([...(data||[]),...rows]);
+    const{data,error}=await sb
+      .from('updates')
+      .select('*')
+      .order('created_at',{ascending:false})
+      .limit(30);
+    if(!error&&data)rows=normalizeAllUpdates(data||[]);
     else if(error)console.warn('updates load:',error);
   }catch(e){
     console.warn('updates load:',e);
   }
+
+  rows=normalizeAllUpdates([...(rows||[]),...localCreditUpdates()]);
   renderUpdates(rows);
 }
 
 async function insertCreditUpdateToSupabase(item){
+  const amountText=Number(item.amount||0).toLocaleString('cs-CZ');
+  const msg=`Hráč ${item.username||'hráč'} si zakoupil ${amountText} kreditů.`;
+
   const variants=[
-    {type:item.type,username:item.username,amount:item.amount,user_id:item.user_id,competition_id:item.competition_id,created_at:item.created_at},
-    {type:item.type,username:item.username,amount:item.amount,created_at:item.created_at},
+    {type:'credits_purchase',username:item.username,amount:item.amount,user_id:item.user_id,competition_id:item.competition_id,created_at:item.created_at,message:msg},
+    {type:'credits_purchase',username:item.username,amount:item.amount,competition_id:item.competition_id,created_at:item.created_at,message:msg},
+    {username:item.username,amount:item.amount,competition_id:item.competition_id,created_at:item.created_at,message:msg},
+    {message:msg,competition_id:item.competition_id,created_at:item.created_at},
     {username:item.username,amount:item.amount,created_at:item.created_at}
   ];
 
