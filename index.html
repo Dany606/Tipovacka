@@ -691,7 +691,6 @@ async function canAccessCurrentCompetition(){
   if(!currentComp||!currentUser)return false;
   if(currentUser.username===ADMIN_USERNAME)return true;
   if(currentMembership&&currentMembership.active!==false)return true;
-  if(await hasExistingTipInCurrentCompetition())return true; // starší účastníci se stávajícími tipy neztratí přístup
   return false;
 }
 
@@ -760,6 +759,7 @@ async function joinCurrentCompetition(){
   }
 }
 
+
 async function getCompetitionParticipantUserIds(compMatchIds=[],allTipsForComp=[]){
   const ids=new Set();
   if(!currentComp)return ids;
@@ -768,18 +768,19 @@ async function getCompetitionParticipantUserIds(compMatchIds=[],allTipsForComp=[
       .from('competition_players')
       .select('user_id,active')
       .eq('competition_id',currentComp.id);
-    if(!error && data){
-      data.forEach(r=>{if(r.active!==false&&r.user_id)ids.add(r.user_id);});
-    }else if(error){
+    if(error){
       membershipTableAvailable=false;
+      console.warn('competition_players leaderboard:',error);
+      return ids;
     }
+    (data||[]).forEach(r=>{if(r.active!==false&&r.user_id)ids.add(r.user_id);});
   }catch(e){
     membershipTableAvailable=false;
+    console.warn('competition_players leaderboard:',e);
   }
-  // Zpětná kompatibilita: kdo už má v soutěži tipy, zůstane v žebříčku.
-  (allTipsForComp||[]).forEach(t=>{if(t.user_id)ids.add(t.user_id);});
   return ids;
 }
+
 
 
 
@@ -860,7 +861,7 @@ async function loadTicker(){
         const compIdsForParticipants=(compMatchesForParticipants||[]).map(m=>m.id);
         const{data:tipsForParticipants}=compIdsForParticipants.length?await sb.from('tips').select('user_id,match_id').in('match_id',compIdsForParticipants):{data:[]};
         const participantIds=await getCompetitionParticipantUserIds(compIdsForParticipants,tipsForParticipants||[]);
-        if(participantIds.size)sorted=sorted.filter(u=>participantIds.has(u.id));
+        sorted=sorted.filter(u=>participantIds.has(u.id));
       }catch(e){}
     }
     const leader=sorted[0];
@@ -1056,6 +1057,8 @@ function renderUpdates(items){
     const amount=Number(u.amount||0).toLocaleString('cs-CZ');
     return `<div class="update-row"><div class="update-date">${formatUpdateDate(created)}</div><div class="update-text">Hráč <strong>${username}</strong> si zakoupil <strong>${amount} kreditů</strong>.</div></div>`;
   }).join('');
+  
+  if(currentComp && (!rankedFilteredStrict || !rankedFilteredStrict.length)){el.innerHTML='<div class=\"empty\">Zatím žádní účastníci. Hráči se v žebříčku objeví až po potvrzení účasti v soutěži.</div>';return;}
   box.style.display='block';
 }
 
@@ -1383,7 +1386,7 @@ function renderPlayerStatsBox(ranked,allTipsForComp,matchById,pointsMode){
   </div></div>`;
 }
 
-function renderHallOfFameBox(ranked,compMatches,pointsMode){
+function renderHallOfFameBox(rankedFilteredStrict,compMatches,pointsMode){
   const top=(ranked||[]).slice(0,3);
   if(!top.length)return '';
   const hasMatches=(compMatches||[]).length>0;
@@ -1755,6 +1758,7 @@ async function renderLeaderboard(){
   const leaderboardUsers=currentComp?(users||[]).filter(u=>participantIds.has(u.id)):(users||[]);
   usersCache=leaderboardUsers||[];
   const START_CREDITS=10000;
+  const STRICT_PARTICIPANT_IDS_FOR_LB=participantIds;
   const ranked=(leaderboardUsers||[]).map(u=>{
     const mt=(tips||[]).filter(t=>t.user_id===u.id&&(!currentComp||compMatchIds.includes(t.match_id)));
     const settled=mt.filter(t=>t.settled);
@@ -1769,6 +1773,7 @@ async function renderLeaderboard(){
     return{name:u.username,credits:u.credits,tipCount:mt.length,settledCount:settled.length,pending,pendingTips,roi,profit};
   }).sort((a,b)=>pointsMode?(b.points-a.points||b.tipCount-a.tipCount):(b.credits-a.credits));
   const allTipsForComp=(tips||[]).filter(t=>!currentComp||compMatchIds.includes(t.match_id));
+  const rankedFilteredStrict=(currentComp && STRICT_PARTICIPANT_IDS_FOR_LB)?ranked.filter(p=>STRICT_PARTICIPANT_IDS_FOR_LB.has(p.id)):ranked;
   const medals=['🥇','🥈','🥉'];
   const extraHtml=`<div class="lb-extra-grid">${renderHallOfFameBox(ranked,compMatches,pointsMode)}${renderPlayerStatsBox(ranked,allTipsForComp,matchById,pointsMode)}</div>`;
   let html=extraHtml+`<div class="sec-title">Celkové pořadí</div><div class="lb-wrap"><table>
