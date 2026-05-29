@@ -1046,6 +1046,82 @@ body.support-hidden .join-support-box{display:none !important}
 }
 </style>
 
+
+<style id="admin-extra-improvements-v1">
+/* Admin vylepšení: klikací karty, počítadla, rychlé akce */
+.admin-dash-card{
+  cursor: pointer;
+  transition: transform .14s ease, border-color .14s ease, box-shadow .14s ease;
+}
+.admin-dash-card:hover{
+  transform: translateY(-1px);
+  border-color: rgba(227,179,65,.44);
+  box-shadow:0 14px 30px rgba(0,0,0,.30),0 0 18px rgba(227,179,65,.09);
+}
+.admin-tab-btn .tab-count{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:20px;
+  height:20px;
+  margin-left:6px;
+  padding:0 6px;
+  border-radius:999px;
+  background:rgba(227,179,65,.14);
+  border:1px solid rgba(227,179,65,.30);
+  color:var(--gold);
+  font-size:11px;
+  font-weight:900;
+}
+.admin-urgent{
+  color:#ff7b72 !important;
+  font-weight:900;
+}
+.admin-quick-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:.55rem;
+}
+.admin-quick-btn{
+  border:1px solid rgba(227,179,65,.34);
+  background:rgba(227,179,65,.10);
+  color:var(--gold);
+  border-radius:999px;
+  padding:.32rem .55rem;
+  font-size:11px;
+  font-weight:900;
+  cursor:pointer;
+}
+.admin-quick-btn:hover{
+  background:rgba(227,179,65,.16);
+}
+.admin-template-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin:.1rem 0 .75rem;
+}
+.admin-template-btn{
+  border:1px solid rgba(139,148,158,.24);
+  background:rgba(13,17,23,.32);
+  color:var(--text2);
+  border-radius:999px;
+  padding:.38rem .62rem;
+  font-size:12px;
+  font-weight:800;
+  cursor:pointer;
+}
+.admin-template-btn:hover{
+  color:var(--gold);
+  border-color:rgba(227,179,65,.36);
+  background:rgba(227,179,65,.09);
+}
+.admin-dash-card[data-jump-tab="matches"] .admin-dash-label{
+  color:var(--gold);
+}
+</style>
+
 </head>
 <body>
 
@@ -3700,6 +3776,204 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
 
   document.addEventListener('DOMContentLoaded',function(){
     setTimeout(enhanceAdmin,400);
+  });
+})();
+</script>
+
+
+<script id="admin-extra-improvements-v1">
+(function(){
+  function parseAdminDate2(str){
+    if(typeof parseMatchDate==='function')return parseMatchDate(str);
+    const m=String(str||'').match(/(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+    if(!m)return null;
+    return new Date(+m[3],+m[2]-1,+m[1],+(m[4]||0),+(m[5]||0));
+  }
+
+  function clickAdminTab(key){
+    const btn=document.querySelector(`.admin-tab-btn[data-admin-tab="${key}"]`);
+    if(btn)btn.click();
+  }
+  window.clickAdminTab=clickAdminTab;
+
+  function adminText(el){return (el?.textContent||'').trim();}
+  function adminTitleOfBox(box){
+    return Array.from(box.children||[]).find(ch=>ch.matches&&ch.matches('h3,.admin-title,.sec-title')) || box.querySelector('h3,.admin-title,.sec-title');
+  }
+  function adminTitleText(box){return adminText(adminTitleOfBox(box)).toLowerCase();}
+
+  async function getAdminExtraCounts(){
+    const counts={todayImportant:0,matches:0,players:0,requests:0,waiting:0,startedWaiting:0};
+    try{
+      if(currentComp){
+        const {data:matches}=await sb.from('matches').select('*').eq('competition_id',currentComp.id);
+        const now=Date.now();
+        (matches||[]).forEach(m=>{
+          counts.matches++;
+          const d=parseAdminDate2(m.match_date);
+          if(m.status!=='done'){
+            counts.waiting++;
+            if(d&&d.getTime()<=now)counts.startedWaiting++;
+            if(d&&d.getTime()>now&&d.getTime()-now<=2*60*60*1000)counts.todayImportant++;
+            if(d&&d.getTime()<=now)counts.todayImportant++;
+            const isBinary=(typeof isBinaryEvent==='function')?isBinaryEvent(m):false;
+            if(!isBinary && (!m.odds_home||(!m.odds_draw&&!m.odds_away)))counts.todayImportant++;
+            if(isBinary && (!m.odds_home||!m.odds_away))counts.todayImportant++;
+          }
+        });
+      }
+      try{
+        const {data:req}=await sb.from('competition_join_requests').select('id').eq('status','pending');
+        counts.requests=(req||[]).length;
+        counts.todayImportant+=counts.requests;
+      }catch(e){}
+      try{
+        const {data:u}=await sb.from('users').select('id');
+        counts.players=(u||[]).length;
+      }catch(e){}
+    }catch(e){}
+    return counts;
+  }
+
+  function enhanceDashboardCards(counts){
+    const cards=Array.from(document.querySelectorAll('.admin-dash-card'));
+    cards.forEach(card=>{
+      const label=(card.querySelector('.admin-dash-label')?.textContent||'').toLowerCase();
+      if(label.includes('čekající')){
+        card.dataset.jumpTab='requests';
+        card.title='Kliknutím otevřeš žádosti';
+      }else if(label.includes('nevyhodnoceno')||label.includes('čeká na výsledek')){
+        card.dataset.jumpTab='matches';
+        card.title='Kliknutím otevřeš zápasy a události';
+        const l=card.querySelector('.admin-dash-label');
+        if(l)l.textContent='Čeká na výsledek';
+      }else if(label.includes('qr')){
+        card.dataset.jumpTab='competitions';
+        card.title='Kliknutím otevřeš nastavení soutěží / QR';
+      }else if(label.includes('dnešní')){
+        card.dataset.jumpTab='matches';
+      }
+      if(card.dataset.jumpTab && card.dataset.clickReady!=='1'){
+        card.dataset.clickReady='1';
+        card.addEventListener('click',()=>clickAdminTab(card.dataset.jumpTab));
+      }
+    });
+  }
+
+  function addTabCounts(counts){
+    const map={
+      today:counts.todayImportant,
+      matches:counts.matches,
+      players:counts.players,
+      requests:counts.requests,
+      competitions:null
+    };
+    document.querySelectorAll('.admin-tab-btn').forEach(btn=>{
+      btn.querySelector('.tab-count')?.remove();
+      const key=btn.dataset.adminTab;
+      const val=map[key];
+      if(val===null||val===undefined)return;
+      const span=document.createElement('span');
+      span.className='tab-count';
+      span.textContent=val;
+      btn.appendChild(span);
+    });
+  }
+
+  function enhanceImportantBox(){
+    const box=Array.from(document.querySelectorAll('.admin-box')).find(b=>adminTitleText(b).includes('dnes důležité'));
+    if(!box||box.dataset.extraReady==='1')return;
+    box.dataset.extraReady='1';
+    const items=box.querySelectorAll('.admin-important-item');
+    items.forEach(item=>{
+      const h=(item.querySelector('h4')?.textContent||'').toLowerCase();
+      if(h.includes('čeká na výsledek')){
+        const lis=item.querySelectorAll('li');
+        lis.forEach(li=>{
+          li.classList.add('admin-urgent');
+          if(!li.textContent.includes('Zápas už začal'))li.textContent='⚠️ Zápas už začal — zadej výsledek: '+li.textContent;
+        });
+        const actions=document.createElement('div');
+        actions.className='admin-quick-actions';
+        actions.innerHTML='<button class="admin-quick-btn" type="button" onclick="clickAdminTab(\'matches\')">Zadat výsledek</button>';
+        item.appendChild(actions);
+      }
+      if(h.includes('bez kurzů')){
+        const actions=document.createElement('div');
+        actions.className='admin-quick-actions';
+        actions.innerHTML='<button class="admin-quick-btn" type="button" onclick="clickAdminTab(\'matches\')">Upravit kurzy</button>';
+        item.appendChild(actions);
+      }
+      if(h.includes('žádosti')){
+        const actions=document.createElement('div');
+        actions.className='admin-quick-actions';
+        actions.innerHTML='<button class="admin-quick-btn" type="button" onclick="clickAdminTab(\'requests\')">Schválit žádosti</button>';
+        item.appendChild(actions);
+      }
+    });
+  }
+
+  function addVsehochutTemplates(){
+    const eventBox=Array.from(document.querySelectorAll('.admin-box')).find(b=>adminTitleText(b).includes('přidat událost'));
+    if(!eventBox||eventBox.dataset.templatesReady==='1')return;
+    eventBox.dataset.templatesReady='1';
+    const body=eventBox.querySelector(':scope > .admin-collapse-body')||eventBox;
+    const row=document.createElement('div');
+    row.className='admin-template-row';
+    row.innerHTML=`
+      <button type="button" class="admin-template-btn" data-tpl="yesno">Ano / Ne</button>
+      <button type="button" class="admin-template-btn" data-tpl="overunder">Více / Méně</button>
+      <button type="button" class="admin-template-btn" data-tpl="teams">Tým A / Tým B</button>
+      <button type="button" class="admin-template-btn" data-tpl="players">Hráč X / Hráč Y</button>
+    `;
+    const firstField=body.querySelector('.field');
+    if(firstField)firstField.before(row); else body.prepend(row);
+
+    const setVals=(a,b)=>{
+      const o1=document.getElementById('evOpt1');
+      const o2=document.getElementById('evOpt2');
+      if(o1)o1.value=a;
+      if(o2)o2.value=b;
+    };
+    row.addEventListener('click',e=>{
+      const btn=e.target.closest('button[data-tpl]');
+      if(!btn)return;
+      const tpl=btn.dataset.tpl;
+      if(tpl==='yesno')setVals('Ano','Ne');
+      if(tpl==='overunder')setVals('Více','Méně');
+      if(tpl==='teams')setVals('Tým A','Tým B');
+      if(tpl==='players')setVals('Hráč X','Hráč Y');
+    });
+  }
+
+  async function runExtraAdminEnhancements(){
+    const root=document.getElementById('adminContent');
+    if(!root||!document.querySelector('.admin-dashboard'))return;
+    const counts=await getAdminExtraCounts();
+    enhanceDashboardCards(counts);
+    addTabCounts(counts);
+    enhanceImportantBox();
+    addVsehochutTemplates();
+  }
+
+  const oldRenderAdmin=window.renderAdmin;
+  if(typeof oldRenderAdmin==='function' && !window.__adminExtraWrapped){
+    window.__adminExtraWrapped=true;
+    window.renderAdmin=async function(){
+      const result=await oldRenderAdmin.apply(this,arguments);
+      setTimeout(runExtraAdminEnhancements,120);
+      return result;
+    };
+  }
+
+  document.addEventListener('DOMContentLoaded',function(){
+    setTimeout(runExtraAdminEnhancements,700);
+  });
+
+  const obs=new MutationObserver(()=>setTimeout(runExtraAdminEnhancements,150));
+  document.addEventListener('DOMContentLoaded',function(){
+    const root=document.getElementById('adminContent')||document.body;
+    obs.observe(root,{childList:true,subtree:true});
   });
 })();
 </script>
