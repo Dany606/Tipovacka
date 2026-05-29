@@ -760,6 +760,59 @@ body.support-hidden .join-support-box{display:none !important}
 }
 </style>
 
+
+<style id="default-competition-admin-actually-visible">
+.default-comp-admin-box{
+  border:1px solid rgba(56,139,253,.50) !important;
+  box-shadow:0 14px 34px rgba(0,0,0,.30),0 0 20px rgba(56,139,253,.10) !important;
+}
+.default-comp-admin-box h3::before{
+  content:'🎯 ';
+}
+.default-comp-admin-box.admin-collapsible .admin-collapse-body,
+.default-comp-admin-box .admin-collapse-body{
+  display:block !important;
+}
+.default-comp-admin-box:not(.open)::after{
+  display:none !important;
+}
+.default-comp-box{
+  display:flex;
+  align-items:flex-end;
+  gap:10px;
+  border:1px solid rgba(139,148,158,.18);
+  background:rgba(13,17,23,.30);
+  border-radius:12px;
+  padding:.85rem;
+}
+.default-comp-box button{
+  min-width:110px;
+}
+.default-comp-note{
+  color:var(--text3);
+  font-size:12px;
+  line-height:1.35;
+  margin-top:.55rem;
+}
+.default-comp-current{
+  color:var(--text2);
+  font-size:13px;
+  margin-top:.45rem;
+}
+.default-comp-current strong{
+  color:var(--gold);
+}
+@media(max-width:720px){
+  .default-comp-box{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .default-comp-box button{
+    width:100%;
+  }
+}
+</style>
+
 </head>
 <body>
 
@@ -2407,6 +2460,7 @@ function renderSupportBox(){
 async function renderLeaderboard(){
   await loadSupportBoxSetting();
   await loadDefaultCompetitionSetting();
+  await loadDefaultCompetitionSetting();
   await settleWinnings();
   await updateCreditsDisplay();
   const el=document.getElementById('leaderboardContent');
@@ -2556,6 +2610,7 @@ async function renderAdmin(){
   }
 
   html+=renderSupportAdminBox();
+  html+=renderDefaultCompetitionAdminBox(comps);
 
   const userOptions=(users||[]).map(u=>`<option value="${u.id}">${u.username} · ${(Number(u.credits)||0).toLocaleString('cs-CZ')} kr</option>`).join('');
   html+=`<div class="admin-box"><h3>Upravit kredity hráče</h3>
