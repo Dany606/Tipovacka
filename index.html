@@ -110,9 +110,9 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .match-date{font-size:11px;color:var(--text3);margin-top:2px}
 
 .team-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.team-flag{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:999px;background:rgba(13,17,23,.62);border:1px solid rgba(255,255,255,.12);font-size:17px;line-height:1;box-shadow:0 0 10px rgba(0,0,0,.25)}
-.team-name-with-flag{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
-.team-name-with-flag .team-flag{width:20px;height:20px;font-size:15px}
+
+
+.team-name-with-flag 
 .ms-flag-match .match-head{border-bottom-color:rgba(227,179,65,.18)}
 .s-done{background:#1a4731;color:var(--green);font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;border:1px solid #238636}
 .s-soon{background:#2d2a14;color:var(--gold);font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;border:1px solid #4d4110}
@@ -251,6 +251,151 @@ select:focus{border-color:var(--blue)}
 .sec-title{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1.35px;color:var(--gold);margin:1.25rem 0 .65rem;text-shadow:0 0 10px rgba(227,179,65,.35);display:flex;align-items:center;gap:6px}
 .sec-title::before{content:'';width:4px;height:14px;border-radius:999px;background:var(--gold);box-shadow:0 0 10px rgba(227,179,65,.5)}
 </style>
+
+<style id="remove-flags-and-top3-labels-fix">
+.team-flag,
+.country-flag,
+.flag-icon,
+.ms-flag,
+.rank-label,
+.top3-label,
+.leader-badge,
+.podium-label {
+  display: none !important;
+}
+</style>
+
+
+<style id="unified-glass-boxes-v1">
+:root{
+  --glass-bg: linear-gradient(135deg, rgba(22,27,34,.88), rgba(18,24,32,.78));
+  --glass-bg-soft: linear-gradient(135deg, rgba(22,27,34,.82), rgba(18,24,32,.72));
+  --glass-border: rgba(139,148,158,.24);
+  --glass-border-gold: rgba(227,179,65,.38);
+  --glass-shadow: 0 14px 34px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.035);
+  --glass-shadow-gold: 0 14px 34px rgba(0,0,0,.30), 0 0 22px rgba(227,179,65,.07), inset 0 1px 0 rgba(255,255,255,.045);
+}
+
+/* Sjednocené skleněné boxy napříč webem */
+.rules-box,
+.reward-box,
+.updates-box,
+.lb-extra-card,
+.admin-box{
+  background: var(--glass-bg) !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: 14px !important;
+  backdrop-filter: blur(12px) saturate(120%) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(120%) !important;
+  box-shadow: var(--glass-shadow) !important;
+  padding: 1rem 1.05rem !important;
+  margin-bottom: 1rem !important;
+  overflow: hidden;
+  position: relative;
+}
+
+.rules-box::before,
+.reward-box::before,
+.updates-box::before,
+.lb-extra-card::before,
+.admin-box::before{
+  content:"";
+  position:absolute;
+  left:0;
+  top:0;
+  right:0;
+  height:1px;
+  background:linear-gradient(90deg, transparent, rgba(255,255,255,.16), transparent);
+  pointer-events:none;
+}
+
+/* Boxy, které mají být trochu prémiovější / zlaté */
+.reward-box,
+.updates-box,
+.lb-extra-card{
+  border-color: var(--glass-border-gold) !important;
+  box-shadow: var(--glass-shadow-gold) !important;
+}
+
+/* Jednotné nadpisy boxů */
+.rules-box h3,
+.reward-title,
+.updates-box h3,
+.lb-extra-title,
+.admin-box h3{
+  color: var(--gold) !important;
+  font-family: 'DM Sans', sans-serif !important;
+  font-size: 12px !important;
+  line-height: 1.2 !important;
+  font-weight: 800 !important;
+  letter-spacing: 1.15px !important;
+  text-transform: uppercase !important;
+  margin: 0 0 .85rem !important;
+  text-shadow: 0 0 12px rgba(227,179,65,.16);
+}
+
+/* Pravidla a malé vnitřní boxy sjednocené */
+.rule-item,
+.stat-pill,
+.update-item,
+.hof-line,
+.admin-match-row,
+.odd-edit-row{
+  background: rgba(13,17,23,.34) !important;
+  border: 1px solid rgba(139,148,158,.18) !important;
+  border-radius: 10px !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+}
+
+/* Aktualizace zůstávají kompaktní */
+.updates-box{
+  padding: .8rem .9rem !important;
+}
+.update-item{
+  padding: .5rem .65rem !important;
+  min-height: auto !important;
+}
+
+/* Odměna – stejné sklo, ale s jemným zlatým nádechem */
+.reward-box{
+  background:
+    radial-gradient(circle at 18% 20%, rgba(227,179,65,.10), transparent 36%),
+    var(--glass-bg) !important;
+}
+.reward-img{
+  border-radius: 12px !important;
+  border: 1px solid rgba(227,179,65,.42) !important;
+  box-shadow: 0 12px 30px rgba(0,0,0,.34), 0 0 18px rgba(227,179,65,.10) !important;
+}
+
+/* Žebříček/statistiky – čistší rozestupy */
+.stat-grid{
+  gap: 10px !important;
+}
+.stat-pill{
+  padding: .78rem .85rem !important;
+}
+
+/* Admin boxy vizuálně zapadnou do zbytku webu */
+.admin-box input,
+.admin-box select,
+.admin-box button{
+  border-radius: 10px;
+}
+
+/* Mobilní zobrazení */
+@media (max-width: 700px){
+  .rules-box,
+  .reward-box,
+  .updates-box,
+  .lb-extra-card,
+  .admin-box{
+    border-radius: 12px !important;
+    padding: .85rem !important;
+  }
+}
+</style>
+
 </head>
 <body>
 
@@ -622,7 +767,7 @@ async function loadTicker(){
 
     let items='';
     const tickerPointsMode=isPointsCompetition();
-    if(leader) items+=`<span class="t-item">🏆 <span class="lbl">Lídr žebříčku:</span> <strong>${leader.username}</strong> <span class="hi">${tickerPointsMode?Math.round(leader._points||0).toLocaleString('cs-CZ')+' bodů':leader.credits.toLocaleString('cs-CZ')+' kr'}</span></span><span class="t-div">·</span>`;
+    if(leader) items+=`<span class="t-item">🏆 <span class="lbl"> žebříčku:</span> <strong>${leader.username}</strong> <span class="hi">${tickerPointsMode?Math.round(leader._points||0).toLocaleString('cs-CZ')+' bodů':leader.credits.toLocaleString('cs-CZ')+' kr'}</span></span><span class="t-div">·</span>`;
     if(second) items+=`<span class="t-item">🥈 <strong>${second.username}</strong> ${tickerPointsMode?Math.round(second._points||0).toLocaleString('cs-CZ')+' bodů':second.credits.toLocaleString('cs-CZ')+' kr'}</span><span class="t-div">·</span>`;
     if(lastMatch) items+=`<span class="t-item">🏒 <span class="lbl">Poslední zápas:</span> <strong>${lastMatch.home} – ${lastMatch.away}</strong> ${lastMatch.result_home}:${lastMatch.result_away}</span><span class="t-div">·</span>`;
     if(lastWin) items+=`<span class="t-item">💰 <span class="lbl">${tickerPointsMode?'Body kola':'Výhra kola'}:</span> <strong>${lastWinUser?.username||'–'}</strong> <span class="pos">+${Number(lastWin.winnings||0).toLocaleString('cs-CZ')} ${tickerPointsMode?'bodů':'kr'}</span></span><span class="t-div">·</span>`;
@@ -1508,7 +1653,7 @@ async function renderLeaderboard(){
       const avg=p.settledCount?((p.points/p.settledCount).toFixed(1)):'0.0';
       html+=`<tr class="${isMe?'me ':''}${i<3?'rank-top-'+(i+1):''}">
         <td class="lb-rank-cell"><span class="lb-rank-badge ${i>2?'lb-rank-num':''}">${medals[i]||i+1}</span></td>
-        <td class="lb-name-cell">${escapeHTML(p.name)}${i===0?'<span class="lb-top-label">Lídr</span>':i===1?'<span class="lb-top-label">Stíhá</span>':i===2?'<span class="lb-top-label">Top 3</span>':''}${isMe?'<span class="lb-me">ty</span>':''}</td>
+        <td class="lb-name-cell">${escapeHTML(p.name)}${i===0?'<span class="lb-top-label"></span>':i===1?'<span class="lb-top-label"></span>':i===2?'<span class="lb-top-label"></span>':''}${isMe?'<span class="lb-me">ty</span>':''}</td>
         <td class="lb-tips-cell r">${p.tipCount} ${renderAdminPendingTooltip(p.name,p.pendingTips||[],matchById,pointsMode)}</td>
         <td class="lb-creds-cell r" style="color:var(--gold)">${p.points} bodů</td>
         <td class="lb-roi-cell r roi-zero">${avg}</td>
@@ -1519,7 +1664,7 @@ async function renderLeaderboard(){
       const credColor=p.credits>0?'var(--green)':'var(--red)';
       html+=`<tr class="${isMe?'me ':''}${i<3?'rank-top-'+(i+1):''}">
         <td class="lb-rank-cell"><span class="lb-rank-badge ${i>2?'lb-rank-num':''}">${medals[i]||i+1}</span></td>
-        <td class="lb-name-cell">${escapeHTML(p.name)}${i===0?'<span class="lb-top-label">Lídr</span>':i===1?'<span class="lb-top-label">Stíhá</span>':i===2?'<span class="lb-top-label">Top 3</span>':''}${isMe?'<span class="lb-me">ty</span>':''}</td>
+        <td class="lb-name-cell">${escapeHTML(p.name)}${i===0?'<span class="lb-top-label"></span>':i===1?'<span class="lb-top-label"></span>':i===2?'<span class="lb-top-label"></span>':''}${isMe?'<span class="lb-me">ty</span>':''}</td>
         <td class="lb-tips-cell r">${p.tipCount} ${renderAdminPendingTooltip(p.name,p.pendingTips||[],matchById,pointsMode)}</td>
         <td class="lb-creds-cell r" style="color:${credColor}">${p.credits.toLocaleString('cs-CZ')} kr</td>
         <td class="lb-roi-cell r ${roiCls}">${roiStr}</td>
