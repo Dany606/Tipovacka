@@ -1201,6 +1201,43 @@ body.support-hidden .join-support-box{display:none !important}
 }
 </style>
 
+
+<style id="admin-no-jump-stabilizer-v1">
+/* Admin stabilizace: při překreslení nenechá probliknout starý vzhled */
+#tab-admin.admin-rendering #adminContent{
+  opacity:0;
+  pointer-events:none;
+}
+#tab-admin.admin-rendering::after{
+  content:"Načítám admin panel…";
+  display:block;
+  width:min(980px,calc(100% - 24px));
+  margin:1rem auto;
+  padding:1rem;
+  border-radius:16px;
+  border:1px solid rgba(227,179,65,.32);
+  background:linear-gradient(135deg,rgba(22,27,34,.92),rgba(18,24,32,.82));
+  color:var(--gold);
+  font-weight:900;
+  text-align:center;
+  box-shadow:0 14px 34px rgba(0,0,0,.30);
+}
+#tab-admin.admin-ready #adminContent{
+  opacity:1;
+  pointer-events:auto;
+}
+.admin-dashboard,
+.admin-context-banner,
+.admin-mini-tabs,
+.admin-tab-panel{
+  animation:adminFadeIn .12s ease both;
+}
+@keyframes adminFadeIn{
+  from{opacity:0;transform:translateY(2px)}
+  to{opacity:1;transform:translateY(0)}
+}
+</style>
+
 </head>
 <body>
 
@@ -4326,6 +4363,113 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
   });
   document.addEventListener('DOMContentLoaded',function(){
     obs.observe(document.body,{childList:true,subtree:true});
+  });
+})();
+</script>
+
+
+<script id="admin-no-jump-stabilizer-v1">
+(function(){
+  function adminTab(){return document.getElementById('tab-admin');}
+  function adminRoot(){return document.getElementById('adminContent');}
+
+  function setAdminRendering(){
+    const tab=adminTab();
+    if(!tab)return;
+    tab.classList.add('admin-rendering');
+    tab.classList.remove('admin-ready');
+  }
+
+  function setAdminReady(){
+    const tab=adminTab();
+    if(!tab)return;
+    tab.classList.remove('admin-rendering');
+    tab.classList.add('admin-ready');
+  }
+
+  function looksLikeNewAdmin(){
+    const root=adminRoot();
+    return !!(root && root.querySelector('.admin-dashboard,.admin-mini-tabs,.admin-tab-panel'));
+  }
+
+  function tryEnhanceAdminHard(){
+    const root=adminRoot();
+    if(!root)return;
+
+    // Pokud se admin už proměnil do nového vzhledu, zobrazíme ho.
+    if(looksLikeNewAdmin()){
+      setAdminReady();
+      return;
+    }
+
+    // Některé starší nadstavby si hlídají dataset dashboardDone.
+    // Když admin přepíše renderAdmin znovu, může dataset zůstat ve špatném stavu.
+    // Smažeme ho a zkusíme vyvolat dostupný postprocess nepřímo přes mutaci.
+    try{delete root.dataset.dashboardDone;}catch(e){}
+
+    // Pokud ani po chvíli nový dashboard nenaskočí, aspoň zobrazíme admin,
+    // aby nezůstal prázdný. Současně tím zabráníme nekonečnému "loadingu".
+    setTimeout(function(){
+      if(looksLikeNewAdmin())setAdminReady();
+      else setAdminReady();
+    },700);
+  }
+
+  const oldRenderAdmin=window.renderAdmin;
+  if(typeof oldRenderAdmin==='function' && !window.__adminNoJumpWrapped){
+    window.__adminNoJumpWrapped=true;
+    window.renderAdmin=async function(){
+      setAdminRendering();
+      const result=await oldRenderAdmin.apply(this,arguments);
+
+      // Dáme čas hlavnímu admin-dashboard skriptu, aby přeskupil starý render do záložek,
+      // ale starý vzhled je mezitím schovaný.
+      setTimeout(tryEnhanceAdminHard,60);
+      setTimeout(tryEnhanceAdminHard,180);
+      setTimeout(tryEnhanceAdminHard,420);
+      return result;
+    };
+  }
+
+  const oldSwitchTab=window.switchTab;
+  if(typeof oldSwitchTab==='function' && !window.__adminNoJumpSwitchWrapped){
+    window.__adminNoJumpSwitchWrapped=true;
+    window.switchTab=function(name,btn){
+      if(name==='admin')setAdminRendering();
+      const result=oldSwitchTab.apply(this,arguments);
+      if(name==='admin'){
+        setTimeout(tryEnhanceAdminHard,80);
+        setTimeout(tryEnhanceAdminHard,260);
+      }
+      return result;
+    };
+  }
+
+  document.addEventListener('DOMContentLoaded',function(){
+    const tab=adminTab();
+    if(tab && tab.style.display!=='none')setTimeout(tryEnhanceAdminHard,300);
+  });
+
+  const obs=new MutationObserver(function(){
+    const tab=adminTab();
+    if(!tab || tab.style.display==='none')return;
+    const root=adminRoot();
+    if(!root)return;
+
+    // Když se v adminu znovu objeví původní seznam admin-boxů bez dashboardu,
+    // schováme ho do doběhnutí přestavby.
+    const hasOldBoxes=root.querySelector('.admin-box');
+    if(hasOldBoxes && !looksLikeNewAdmin()){
+      setAdminRendering();
+      setTimeout(tryEnhanceAdminHard,80);
+      setTimeout(tryEnhanceAdminHard,250);
+    }else if(looksLikeNewAdmin()){
+      setAdminReady();
+    }
+  });
+  document.addEventListener('DOMContentLoaded',function(){
+    const root=adminRoot()||document.body;
+    obs.observe(root,{childList:true,subtree:true});
   });
 })();
 </script>
