@@ -3978,5 +3978,39 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
 })();
 </script>
 
+
+<script id="admin-no-matches-tab-count-v1">
+(function(){
+  function removeMatchesTabCount(){
+    const btn=document.querySelector('.admin-tab-btn[data-admin-tab="matches"]');
+    if(!btn)return;
+    const count=btn.querySelector('.tab-count');
+    if(count)count.remove();
+  }
+
+  const oldRenderAdmin=window.renderAdmin;
+  if(typeof oldRenderAdmin==='function' && !window.__adminNoMatchesCountWrapped){
+    window.__adminNoMatchesCountWrapped=true;
+    window.renderAdmin=async function(){
+      const result=await oldRenderAdmin.apply(this,arguments);
+      setTimeout(removeMatchesTabCount,250);
+      setTimeout(removeMatchesTabCount,600);
+      return result;
+    };
+  }
+
+  document.addEventListener('DOMContentLoaded',function(){
+    setTimeout(removeMatchesTabCount,800);
+  });
+
+  const obs=new MutationObserver(function(){
+    removeMatchesTabCount();
+  });
+  document.addEventListener('DOMContentLoaded',function(){
+    obs.observe(document.body,{childList:true,subtree:true});
+  });
+})();
+</script>
+
 </body>
 </html>
