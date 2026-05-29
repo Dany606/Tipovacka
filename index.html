@@ -382,6 +382,11 @@ select:focus{border-color:var(--blue)}
 }
 </style>
 
+
+<style id="participation-final-fix">
+.empty{width:min(760px,calc(100% - 24px));margin:1rem auto;padding:1rem;border:1px solid rgba(139,148,158,.22);border-radius:12px;background:rgba(22,27,34,.82);color:var(--text2);text-align:center;}
+</style>
+
 </head>
 <body>
 
@@ -759,7 +764,6 @@ async function joinCurrentCompetition(){
   }
 }
 
-
 async function getCompetitionParticipantUserIds(compMatchIds=[],allTipsForComp=[]){
   const ids=new Set();
   if(!currentComp)return ids;
@@ -780,7 +784,6 @@ async function getCompetitionParticipantUserIds(compMatchIds=[],allTipsForComp=[
   }
   return ids;
 }
-
 
 
 
@@ -1057,8 +1060,6 @@ function renderUpdates(items){
     const amount=Number(u.amount||0).toLocaleString('cs-CZ');
     return `<div class="update-row"><div class="update-date">${formatUpdateDate(created)}</div><div class="update-text">Hráč <strong>${username}</strong> si zakoupil <strong>${amount} kreditů</strong>.</div></div>`;
   }).join('');
-  
-  if(currentComp && (!rankedFilteredStrict || !rankedFilteredStrict.length)){el.innerHTML='<div class=\"empty\">Zatím žádní účastníci. Hráči se v žebříčku objeví až po potvrzení účasti v soutěži.</div>';return;}
   box.style.display='block';
 }
 
@@ -1386,7 +1387,7 @@ function renderPlayerStatsBox(ranked,allTipsForComp,matchById,pointsMode){
   </div></div>`;
 }
 
-function renderHallOfFameBox(rankedFilteredStrict,compMatches,pointsMode){
+function renderHallOfFameBox(ranked,compMatches,pointsMode){
   const top=(ranked||[]).slice(0,3);
   if(!top.length)return '';
   const hasMatches=(compMatches||[]).length>0;
@@ -1758,7 +1759,6 @@ async function renderLeaderboard(){
   const leaderboardUsers=currentComp?(users||[]).filter(u=>participantIds.has(u.id)):(users||[]);
   usersCache=leaderboardUsers||[];
   const START_CREDITS=10000;
-  const STRICT_PARTICIPANT_IDS_FOR_LB=participantIds;
   const ranked=(leaderboardUsers||[]).map(u=>{
     const mt=(tips||[]).filter(t=>t.user_id===u.id&&(!currentComp||compMatchIds.includes(t.match_id)));
     const settled=mt.filter(t=>t.settled);
@@ -1772,8 +1772,11 @@ async function renderLeaderboard(){
     const profit=u.credits-START_CREDITS;
     return{name:u.username,credits:u.credits,tipCount:mt.length,settledCount:settled.length,pending,pendingTips,roi,profit};
   }).sort((a,b)=>pointsMode?(b.points-a.points||b.tipCount-a.tipCount):(b.credits-a.credits));
+  if(currentComp && (!ranked || !ranked.length)){
+    el.innerHTML='<div class="empty">Zatím žádní účastníci. Hráči se v žebříčku objeví až po potvrzení účasti v soutěži.</div>';
+    return;
+  }
   const allTipsForComp=(tips||[]).filter(t=>!currentComp||compMatchIds.includes(t.match_id));
-  const rankedFilteredStrict=(currentComp && STRICT_PARTICIPANT_IDS_FOR_LB)?ranked.filter(p=>STRICT_PARTICIPANT_IDS_FOR_LB.has(p.id)):ranked;
   const medals=['🥇','🥈','🥉'];
   const extraHtml=`<div class="lb-extra-grid">${renderHallOfFameBox(ranked,compMatches,pointsMode)}${renderPlayerStatsBox(ranked,allTipsForComp,matchById,pointsMode)}</div>`;
   let html=extraHtml+`<div class="sec-title">Celkové pořadí</div><div class="lb-wrap"><table>
