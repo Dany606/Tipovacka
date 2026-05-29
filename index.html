@@ -1122,6 +1122,71 @@ body.support-hidden .join-support-box{display:none !important}
 }
 </style>
 
+
+<style id="admin-rules-updates-editor-v1">
+.admin-editor-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:14px;
+}
+.admin-editor-grid textarea{
+  width:100%;
+  border-radius:10px;
+  border:1px solid var(--border);
+  background:var(--bg);
+  color:var(--text);
+  padding:.7rem .8rem;
+  outline:none;
+  resize:vertical;
+  font-family:'DM Sans',sans-serif;
+}
+.admin-editor-grid textarea:focus{
+  border-color:var(--blue);
+}
+.admin-editor-actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.admin-small-note{
+  color:var(--text3);
+  font-size:12px;
+  line-height:1.35;
+  margin-top:.55rem;
+}
+.admin-manual-list{
+  margin-top:.75rem;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.admin-manual-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  border:1px solid rgba(139,148,158,.18);
+  background:rgba(13,17,23,.32);
+  border-radius:10px;
+  padding:.55rem .65rem;
+  color:var(--text2);
+  font-size:12px;
+}
+.admin-manual-row button{
+  width:26px;
+  height:26px;
+  border-radius:50%;
+  border:1px solid rgba(248,81,73,.38);
+  background:rgba(248,81,73,.10);
+  color:var(--red);
+  cursor:pointer;
+  font-weight:900;
+}
+@media(max-width:800px){
+  .admin-editor-grid{grid-template-columns:1fr}
+}
+</style>
+
 </head>
 <body>
 
@@ -1247,6 +1312,7 @@ let currentMembership=null,membershipTableAvailable=true;
 let currentJoinRequest=null,joinRequestsAvailable=true;
 let supportBoxEnabled=true,supportSettingsAvailable=true;
 let defaultCompetitionId=null,defaultCompetitionSettingsAvailable=true;
+let currentRulesOverride=null,rulesSettingsAvailable=true;
 let matchLockRefreshTimer=null;
 const pending={};
 
@@ -1397,6 +1463,7 @@ async function loadActiveComp(){
   if(error){console.warn('competitions:',error);return;}
   allActiveComps=data||[];
   const defaultId=await loadDefaultCompetitionSetting();
+  await loadCurrentRulesOverride();
   const sessionId=sessionStorage.getItem('tip_competition_id_session');
   const savedId=localStorage.getItem('tip_competition_id');
 
@@ -1432,6 +1499,7 @@ async function switchCompetition(id){
   localStorage.setItem('tip_competition_id',id);
   sessionStorage.setItem('tip_competition_id_session',id);
   await refreshCurrentMembership();
+  await loadCurrentRulesOverride();
   renderCompetitionSwitch();
   renderRules();
   await settleWinnings();
@@ -1703,7 +1771,224 @@ function renderNoParticipants(){
 }
 
 
+
+function rulesSettingKey(comp=currentComp){
+  return comp&&comp.id ? 'rules_'+comp.id : null;
+}
+
+async function loadCurrentRulesOverride(){
+  currentRulesOverride=null;
+  rulesSettingsAvailable=true;
+  const key=rulesSettingKey();
+  if(!key)return null;
+  try{
+    const{data,error}=await sb.from('site_settings').select('value').eq('key',key).maybeSingle();
+    if(error){
+      rulesSettingsAvailable=false;
+      const local=localStorage.getItem(key);
+      currentRulesOverride=local?JSON.parse(local):null;
+      return currentRulesOverride;
+    }
+    if(data&&data.value){
+      try{currentRulesOverride=JSON.parse(data.value);}catch(e){currentRulesOverride=null;}
+      localStorage.setItem(key,data.value);
+    }
+  }catch(e){
+    rulesSettingsAvailable=false;
+    const local=localStorage.getItem(key);
+    try{currentRulesOverride=local?JSON.parse(local):null;}catch(_){currentRulesOverride=null;}
+  }
+  return currentRulesOverride;
+}
+
+function defaultRulesDataForCompetition(comp=currentComp){
+  const pointsMode=isPointsCompetition(comp);
+  if(pointsMode){
+    return {
+      lines:[
+        '🎯 Tipuje se: přesný výsledek',
+        '🏆 Vyhrává: nejvíc bodů',
+        '✅ Správný vítěz: +1 bod',
+        '🎯 Přesný výsledek: +5 bodů'
+      ],
+      note:'Body navíc — +1 bod za přesný počet gólů domácích a +1 bod za přesný počet gólů hostů. Kurzy, sázky, kredity a bankrot se v bodové soutěži nepoužívají.'
+    };
+  }
+  return {
+    lines:[
+      '💰 Start: 10 000 kr',
+      '⬇️ Min sázka: 100 kr',
+      '🏆 Vyhrává: nejvíc kreditů',
+      '🚫 Bankrot: 0 kr = konec'
+    ],
+    note:'Výsledek základní doby (1X2) — výhra = sázka × kurz · Vítěz vč. prod./náj. — výhra = sázka × kurz vítěze'
+  };
+}
+
+function splitRuleLine(line){
+  const idx=String(line||'').indexOf(':');
+  if(idx<0)return {left:String(line||''),right:''};
+  return {left:String(line).slice(0,idx+1),right:String(line).slice(idx+1).trim()};
+}
+
+function renderRulesFromData(data){
+  const grid=document.getElementById('rulesGrid');
+  const note=document.getElementById('rulesNote');
+  if(!grid||!note)return;
+  const rules=(data?.lines&&data.lines.length?data.lines:defaultRulesDataForCompetition().lines).slice(0,8);
+  grid.innerHTML=rules.map(line=>{
+    const p=splitRuleLine(line);
+    return `<div class="rule">${escapeHTML(p.left)}${p.right?` <strong>${escapeHTML(p.right)}</strong>`:''}</div>`;
+  }).join('');
+  note.innerHTML=escapeHTML(data?.note||defaultRulesDataForCompetition().note);
+}
+
+async function saveRulesFromAdmin(){
+  if(!currentComp){alert('Není vybraná soutěž.');return;}
+  const lines=(document.getElementById('adminRulesLines')?.value||'')
+    .split('\n')
+    .map(x=>x.trim())
+    .filter(Boolean);
+  const note=(document.getElementById('adminRulesNote')?.value||'').trim();
+  if(!lines.length){alert('Zadej aspoň jeden řádek pravidel.');return;}
+  const data={lines,note};
+  const key=rulesSettingKey();
+  const value=JSON.stringify(data);
+  localStorage.setItem(key,value);
+  currentRulesOverride=data;
+  try{
+    const{error}=await sb.from('site_settings').upsert({key,value,updated_at:new Date().toISOString()},{onConflict:'key'});
+    if(error){
+      rulesSettingsAvailable=false;
+      alert('Pravidla se uložila jen v tomto prohlížeči. Pro veřejné uložení všem hráčům zkontroluj tabulku site_settings. Chyba: '+error.message);
+    }else{
+      rulesSettingsAvailable=true;
+      alert('Pravidla uložena.');
+    }
+  }catch(e){
+    rulesSettingsAvailable=false;
+    alert('Pravidla se uložila jen v tomto prohlížeči. Chyba: '+(e.message||e));
+  }
+  renderRules();
+  renderAdmin();
+}
+
+async function resetRulesFromAdmin(){
+  if(!currentComp)return;
+  if(!confirm('Vrátit pravidla této soutěže na výchozí text?'))return;
+  const key=rulesSettingKey();
+  currentRulesOverride=null;
+  localStorage.removeItem(key);
+  try{await sb.from('site_settings').delete().eq('key',key);}catch(e){}
+  renderRules();
+  renderAdmin();
+}
+
+function updateKindText(u){
+  if((u.type||'')==='manual')return escapeHTML(u.message||u.text||'');
+  const username=escapeHTML(u.username||u.player||'hráč');
+  const amount=Number(u.amount||0).toLocaleString('cs-CZ');
+  return `Hráč <strong>${username}</strong> si zakoupil <strong>${amount} kreditů</strong>.`;
+}
+
+function normalizeAllUpdates(items){
+  const seen=new Set();
+  return (items||[])
+    .filter(Boolean)
+    .map(u=>{
+      const type=u.type||((u.message||u.text)?'manual':'credits_purchase');
+      return {
+        id:u.id||null,
+        type,
+        message:u.message||u.text||'',
+        username:u.username||u.player||u.name||'hráč',
+        amount:Number(u.amount||u.credits||0)||0,
+        user_id:u.user_id||u.userId||null,
+        competition_id:u.competition_id||u.competitionId||null,
+        created_at:u.created_at||u.createdAt||new Date().toISOString()
+      };
+    })
+    .filter(u=>u.type==='manual' ? !!u.message : u.amount>0)
+    .filter(u=>!u.competition_id || !currentComp || u.competition_id===currentComp.id)
+    .sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))
+    .filter(u=>{
+      const key=[u.type,u.message,u.username,u.amount,formatUpdateDate(u.created_at)].join('|');
+      if(seen.has(key))return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+async function insertManualUpdate(){
+  if(!currentComp){alert('Není vybraná soutěž.');return;}
+  const msg=(document.getElementById('manualUpdateText')?.value||'').trim();
+  if(!msg){alert('Napiš text aktualizace.');return;}
+  const item={type:'manual',message:msg,competition_id:currentComp.id,created_at:new Date().toISOString()};
+  const variants=[
+    item,
+    {type:item.type,message:item.message,created_at:item.created_at},
+    {message:item.message,created_at:item.created_at}
+  ];
+  let ok=false,lastError=null;
+  for(const payload of variants){
+    const{error}=await sb.from('updates').insert(payload);
+    if(!error){ok=true;break;}
+    lastError=error;
+  }
+  if(!ok){alert('Aktualizaci se nepodařilo uložit: '+(lastError?.message||''));return;}
+  document.getElementById('manualUpdateText').value='';
+  await loadUpdates();
+  renderAdmin();
+}
+
+async function deleteManualUpdate(id){
+  if(!id)return;
+  if(!confirm('Smazat tuto ruční aktualizaci?'))return;
+  const{error}=await sb.from('updates').delete().eq('id',id);
+  if(error){alert('Aktualizaci se nepodařilo smazat: '+error.message);return;}
+  await loadUpdates();
+  renderAdmin();
+}
+
+function renderRulesUpdatesAdminBox(){
+  const d=currentRulesOverride||defaultRulesDataForCompetition();
+  return `<div class="admin-box"><h3>Pravidla a aktualizace</h3>
+    <div class="admin-editor-grid">
+      <div>
+        <div class="tip-label">Pravidla pro aktuální soutěž</div>
+        <div class="field"><label>Řádky pravidel — každý řádek zvlášť</label><textarea id="adminRulesLines" rows="6">${escapeHTML((d.lines||[]).join('\n'))}</textarea></div>
+        <div class="field"><label>Poznámka pod pravidly</label><textarea id="adminRulesNote" rows="3">${escapeHTML(d.note||'')}</textarea></div>
+        <div class="admin-editor-actions">
+          <button class="btn-a btn-g" onclick="saveRulesFromAdmin()">Uložit pravidla</button>
+          <button class="btn-a" onclick="resetRulesFromAdmin()">Vrátit výchozí</button>
+        </div>
+      </div>
+      <div>
+        <div class="tip-label">Ruční aktualizace pro hráče</div>
+        <div class="field"><label>Text aktualizace</label><textarea id="manualUpdateText" rows="4" placeholder="Např. Dnes večer doplním výsledky po 22:00."></textarea></div>
+        <button class="btn-a btn-g" onclick="insertManualUpdate()" style="width:100%">Přidat aktualizaci</button>
+        <div class="admin-small-note">Zakoupení kreditů se do aktualizací zapisuje dál automaticky. Ruční řádky slouží jako zprávy pro hráče.</div>
+        <div id="adminManualUpdatesList"></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function renderAdminManualUpdatesPreview(){
+  const el=document.getElementById('adminManualUpdatesList');
+  if(!el||!currentComp)return;
+  try{
+    const{data}=await sb.from('updates').select('*').order('created_at',{ascending:false}).limit(20);
+    const rows=normalizeAllUpdates(data||[]).filter(u=>u.type==='manual').slice(0,5);
+    if(!rows.length){el.innerHTML='<div class="update-empty" style="margin-top:8px">Žádné ruční aktualizace.</div>';return;}
+    el.innerHTML='<div class="admin-manual-list">'+rows.map(u=>`<div class="admin-manual-row"><span>${formatUpdateDate(u.created_at)} · ${escapeHTML(u.message)}</span>${u.id?`<button onclick="deleteManualUpdate('${u.id}')" title="Smazat">×</button>`:''}</div>`).join('')+'</div>';
+  }catch(e){
+    el.innerHTML='<div class="update-empty" style="margin-top:8px">Náhled aktualizací se nepodařilo načíst.</div>';
+  }
+}
+
 function renderRules(){
+  if(currentRulesOverride){renderRulesFromData(currentRulesOverride);return;}
   const grid=document.getElementById('rulesGrid');
   const note=document.getElementById('rulesNote');
   const rewardBox=document.getElementById('rewardBox');
@@ -1931,24 +2216,7 @@ function localCreditUpdates(){
 }
 
 function normalizeUpdates(items){
-  const seen=new Set();
-  return (items||[])
-    .filter(u=>u&&(!u.type||u.type==='credits_purchase'))
-    .map(u=>({
-      type:u.type||'credits_purchase',
-      username:u.username||u.player||u.name||'hráč',
-      amount:Number(u.amount||u.credits||0)||0,
-      user_id:u.user_id||u.userId||null,
-      created_at:u.created_at||u.createdAt||new Date().toISOString()
-    }))
-    .filter(u=>u.amount>0)
-    .sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))
-    .filter(u=>{
-      const key=[u.username,u.amount,formatUpdateDate(u.created_at)].join('|');
-      if(seen.has(key))return false;
-      seen.add(key);
-      return true;
-    });
+  return normalizeAllUpdates(items).filter(u=>u.type==='credits_purchase');
 }
 
 function saveLocalCreditUpdate(item){
@@ -1960,13 +2228,15 @@ function renderUpdates(items){
   const box=document.getElementById('updatesBox');
   const list=document.getElementById('updatesList');
   if(!box||!list)return;
-  const rows=normalizeUpdates(items).slice(0,3);
+  if(isPointsCompetition()){
+    box.style.display='none';
+    return;
+  }
+  const rows=normalizeAllUpdates(items).slice(0,3);
   if(!rows.length){box.style.display='none';return;}
   list.innerHTML=rows.map(u=>{
     const created=u.created_at||u.createdAt||new Date().toISOString();
-    const username=escapeHTML(u.username||u.player||'hráč');
-    const amount=Number(u.amount||0).toLocaleString('cs-CZ');
-    return `<div class="update-row"><div class="update-date">${formatUpdateDate(created)}</div><div class="update-text">Hráč <strong>${username}</strong> si zakoupil <strong>${amount} kreditů</strong>.</div></div>`;
+    return `<div class="update-row"><div class="update-date">${formatUpdateDate(created)}</div><div class="update-text">${updateKindText(u)}</div></div>`;
   }).join('');
   box.style.display='block';
 }
@@ -1980,12 +2250,9 @@ async function loadUpdates(){
 
   let rows=localCreditUpdates();
   try{
-    const{data,error}=await sb
-      .from('updates')
-      .select('*')
-      .order('created_at',{ascending:false})
-      .limit(10);
-    if(!error&&data)rows=normalizeUpdates([...(data||[]),...rows]);
+    let q=sb.from('updates').select('*').order('created_at',{ascending:false}).limit(20);
+    const{data,error}=await q;
+    if(!error&&data)rows=normalizeAllUpdates([...(data||[]),...rows]);
     else if(error)console.warn('updates load:',error);
   }catch(e){
     console.warn('updates load:',e);
@@ -1995,7 +2262,7 @@ async function loadUpdates(){
 
 async function insertCreditUpdateToSupabase(item){
   const variants=[
-    {type:item.type,username:item.username,amount:item.amount,user_id:item.user_id,created_at:item.created_at},
+    {type:item.type,username:item.username,amount:item.amount,user_id:item.user_id,competition_id:item.competition_id,created_at:item.created_at},
     {type:item.type,username:item.username,amount:item.amount,created_at:item.created_at},
     {username:item.username,amount:item.amount,created_at:item.created_at}
   ];
@@ -2011,7 +2278,7 @@ async function insertCreditUpdateToSupabase(item){
 }
 
 async function addCreditUpdate(username,amount,userId){
-  const item={type:'credits_purchase',username,amount:Number(amount)||0,user_id:userId||null,created_at:new Date().toISOString()};
+  const item={type:'credits_purchase',username,amount:Number(amount)||0,user_id:userId||null,competition_id:currentComp?.id||null,created_at:new Date().toISOString()};
 
   // Nejdřív uložíme lokálně, aby se aktualizace adminovi vždy zobrazila hned.
   saveLocalCreditUpdate(item);
@@ -3060,6 +3327,7 @@ async function renderAdmin(){
   }
   el.innerHTML=html;
   bindAdminPendingTooltips();
+  renderAdminManualUpdatesPreview();
 }
 
 
