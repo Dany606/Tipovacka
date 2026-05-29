@@ -578,6 +578,44 @@ select:focus{border-color:var(--blue)}
 }
 </style>
 
+
+<style id="collapsible-admin-boxes-v1">
+.admin-box.admin-collapsible{padding:0 !important}
+.admin-box.admin-collapsible > h3,
+.admin-box.admin-collapsible > .admin-title,
+.admin-box.admin-collapsible > .sec-title{
+  display:flex !important;align-items:center;justify-content:space-between;gap:.75rem;
+  margin:0 !important;padding:.95rem 1.05rem !important;cursor:pointer;user-select:none;
+  color:var(--gold) !important;border-bottom:1px solid transparent;
+}
+.admin-box.admin-collapsible > h3::after,
+.admin-box.admin-collapsible > .admin-title::after,
+.admin-box.admin-collapsible > .sec-title::after{
+  content:"⌄";width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;
+  border-radius:999px;border:1px solid rgba(227,179,65,.32);background:rgba(227,179,65,.08);
+  color:var(--gold);font-size:18px;line-height:1;transition:transform .18s ease,background .18s ease;
+}
+.admin-box.admin-collapsible.open > h3,
+.admin-box.admin-collapsible.open > .admin-title,
+.admin-box.admin-collapsible.open > .sec-title{border-bottom-color:rgba(139,148,158,.16)}
+.admin-box.admin-collapsible.open > h3::after,
+.admin-box.admin-collapsible.open > .admin-title::after,
+.admin-box.admin-collapsible.open > .sec-title::after{transform:rotate(180deg);background:rgba(227,179,65,.14)}
+.admin-box.admin-collapsible .admin-collapse-body{display:none;padding:.85rem 1.05rem 1rem}
+.admin-box.admin-collapsible.open .admin-collapse-body{display:block}
+.admin-box.admin-collapsible:not(.open){min-height:0 !important}
+.admin-box.admin-collapsible:not(.open)::after{
+  content:"Klikni pro rozbalení";display:block;margin:-.45rem 1.05rem .8rem;color:var(--text3);font-size:12px;
+}
+@media(max-width:720px){
+  .admin-box.admin-collapsible > h3,
+  .admin-box.admin-collapsible > .admin-title,
+  .admin-box.admin-collapsible > .sec-title{padding:.85rem !important}
+  .admin-box.admin-collapsible .admin-collapse-body{padding:.75rem .85rem .9rem}
+  .admin-box.admin-collapsible:not(.open)::after{margin:-.35rem .85rem .7rem}
+}
+</style>
+
 </head>
 <body>
 
@@ -2396,6 +2434,57 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSupportQr();});
   document.addEventListener('DOMContentLoaded', function(){
     const target = document.getElementById('leaderboardContent') || document.body;
     obs.observe(target, {childList:true, subtree:true});
+  });
+})();
+</script>
+
+
+<script id="collapsible-admin-boxes-v1">
+(function(){
+  function directTitle(box){
+    for(const child of Array.from(box.children)){
+      if(child.matches && child.matches('h3, .admin-title, .sec-title')) return child;
+    }
+    return null;
+  }
+  function makeAdminCollapsible(box,index){
+    if(!box || box.dataset.adminCollapsibleReady==='1')return;
+    const title=directTitle(box);
+    if(!title)return;
+    const nodes=Array.from(box.childNodes).filter(n=>n!==title);
+    if(!nodes.length)return;
+    const body=document.createElement('div');
+    body.className='admin-collapse-body';
+    nodes.forEach(n=>body.appendChild(n));
+    box.appendChild(body);
+    box.classList.add('admin-collapsible');
+    box.dataset.adminCollapsibleReady='1';
+    const titleText=(title.textContent||'').trim().toLowerCase().replace(/\s+/g,'_').slice(0,40);
+    const key='tip_admin_box_open_'+titleText+'_'+index;
+    const saved=localStorage.getItem(key);
+    const open=saved===null ? index===0 : saved==='1';
+    box.classList.toggle('open',open);
+    title.addEventListener('click',function(){
+      const isOpen=box.classList.toggle('open');
+      localStorage.setItem(key,isOpen?'1':'0');
+    });
+  }
+  function initAdminCollapsibleBoxes(){
+    const root=document.getElementById('adminContent')||document.querySelector('#admin')||document.querySelector('.admin-content')||document.body;
+    Array.from(root.querySelectorAll('.admin-box')).forEach((box,index)=>makeAdminCollapsible(box,index));
+  }
+  const oldRenderAdmin=window.renderAdmin;
+  if(typeof oldRenderAdmin==='function'){
+    window.renderAdmin=async function(){
+      const result=await oldRenderAdmin.apply(this,arguments);
+      setTimeout(initAdminCollapsibleBoxes,0);
+      return result;
+    };
+  }
+  document.addEventListener('DOMContentLoaded',function(){
+    setTimeout(initAdminCollapsibleBoxes,300);
+    const root=document.getElementById('adminContent')||document.querySelector('#admin')||document.querySelector('.admin-content')||document.body;
+    new MutationObserver(initAdminCollapsibleBoxes).observe(root,{childList:true,subtree:true});
   });
 })();
 </script>
