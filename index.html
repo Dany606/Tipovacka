@@ -813,6 +813,239 @@ body.support-hidden .join-support-box{display:none !important}
 }
 </style>
 
+
+<style id="admin-dashboard-tabs-v1">
+.admin-dashboard{
+  width:min(980px,calc(100% - 24px));
+  margin:1rem auto .75rem;
+  display:grid;
+  grid-template-columns:repeat(5,1fr);
+  gap:10px;
+}
+.admin-dash-card{
+  border:1px solid rgba(139,148,158,.20);
+  border-radius:14px;
+  background:linear-gradient(135deg,rgba(22,27,34,.88),rgba(18,24,32,.78));
+  box-shadow:0 10px 24px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.035);
+  padding:.75rem .85rem;
+  min-height:74px;
+}
+.admin-dash-label{
+  color:var(--text3);
+  font-size:11px;
+  text-transform:uppercase;
+  letter-spacing:.8px;
+  font-weight:800;
+  margin-bottom:.35rem;
+}
+.admin-dash-value{
+  color:var(--text);
+  font-size:18px;
+  font-weight:900;
+  line-height:1.15;
+}
+.admin-dash-value.gold{color:var(--gold)}
+.admin-dash-value.green{color:var(--green)}
+.admin-dash-value.red{color:var(--red)}
+
+.admin-context-banner{
+  width:min(980px,calc(100% - 24px));
+  margin:.75rem auto .75rem;
+  border:1px solid rgba(227,179,65,.35);
+  border-radius:14px;
+  background:
+    radial-gradient(circle at 12% 20%,rgba(227,179,65,.12),transparent 36%),
+    linear-gradient(135deg,rgba(22,27,34,.92),rgba(18,24,32,.80));
+  padding:.85rem 1rem;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  box-shadow:0 12px 28px rgba(0,0,0,.24),0 0 20px rgba(227,179,65,.06);
+}
+.admin-context-title{
+  color:var(--text);
+  font-weight:900;
+}
+.admin-context-title strong{
+  color:var(--gold);
+}
+.admin-context-sub{
+  color:var(--text3);
+  font-size:12px;
+  margin-top:2px;
+}
+.admin-context-pill{
+  color:var(--gold);
+  border:1px solid rgba(227,179,65,.34);
+  background:rgba(227,179,65,.09);
+  border-radius:999px;
+  padding:.35rem .65rem;
+  font-size:12px;
+  font-weight:900;
+  white-space:nowrap;
+}
+
+.admin-mini-tabs{
+  width:min(980px,calc(100% - 24px));
+  margin:.75rem auto;
+  display:grid;
+  grid-template-columns:repeat(5,1fr);
+  gap:8px;
+}
+.admin-tab-btn{
+  border:1px solid rgba(139,148,158,.22);
+  border-radius:12px;
+  background:rgba(22,27,34,.76);
+  color:var(--text2);
+  padding:.75rem .55rem;
+  font-weight:900;
+  cursor:pointer;
+  transition:.15s;
+}
+.admin-tab-btn:hover{
+  border-color:rgba(227,179,65,.35);
+  color:var(--text);
+}
+.admin-tab-btn.active{
+  background:rgba(227,179,65,.12);
+  color:var(--gold);
+  border-color:rgba(227,179,65,.55);
+  box-shadow:0 0 20px rgba(227,179,65,.08);
+}
+
+.admin-tab-panel{
+  display:none;
+  width:min(980px,calc(100% - 24px));
+  margin:0 auto;
+}
+.admin-tab-panel.active{
+  display:block;
+}
+.admin-tab-panel > .admin-box{
+  width:100% !important;
+  margin-left:0 !important;
+  margin-right:0 !important;
+}
+
+.admin-section-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  margin-left:.55rem;
+  padding:.18rem .45rem;
+  border-radius:999px;
+  font-size:10px;
+  font-family:'DM Sans',sans-serif;
+  font-weight:900;
+  letter-spacing:.45px;
+  vertical-align:middle;
+  text-transform:uppercase;
+}
+.admin-section-badge.green{
+  color:#7ee787;
+  border:1px solid rgba(63,185,80,.30);
+  background:rgba(63,185,80,.10);
+}
+.admin-section-badge.yellow{
+  color:var(--gold);
+  border:1px solid rgba(227,179,65,.30);
+  background:rgba(227,179,65,.10);
+}
+.admin-section-badge.red{
+  color:#ff7b72;
+  border:1px solid rgba(248,81,73,.32);
+  background:rgba(248,81,73,.10);
+}
+.admin-section-badge.lock{
+  color:#d2a8ff;
+  border:1px solid rgba(210,168,255,.30);
+  background:rgba(210,168,255,.10);
+}
+
+.admin-important-box{
+  border-color:rgba(227,179,65,.42) !important;
+  box-shadow:0 14px 34px rgba(0,0,0,.30),0 0 24px rgba(227,179,65,.08) !important;
+}
+.admin-important-grid{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:10px;
+}
+.admin-important-item{
+  border:1px solid rgba(139,148,158,.18);
+  background:rgba(13,17,23,.30);
+  border-radius:12px;
+  padding:.75rem;
+}
+.admin-important-item h4{
+  margin:0 0 .45rem;
+  color:var(--gold);
+  font-size:12px;
+  text-transform:uppercase;
+  letter-spacing:.8px;
+}
+.admin-important-item ul{
+  margin:.25rem 0 0;
+  padding-left:1.1rem;
+  color:var(--text2);
+  font-size:12px;
+  line-height:1.45;
+}
+.admin-important-item .empty-mini{
+  color:var(--text3);
+  font-size:12px;
+}
+
+.admin-filterbar{
+  display:grid;
+  grid-template-columns:150px 160px 1fr;
+  gap:8px;
+  margin:.65rem 0 .8rem;
+  padding:.7rem;
+  border:1px solid rgba(139,148,158,.18);
+  background:rgba(13,17,23,.25);
+  border-radius:12px;
+}
+.admin-filterbar select,
+.admin-filterbar input{
+  width:100%;
+  border-radius:10px;
+  border:1px solid var(--border);
+  background:var(--bg);
+  color:var(--text);
+  padding:.55rem .65rem;
+  outline:none;
+}
+.admin-filterbar input:focus,
+.admin-filterbar select:focus{
+  border-color:var(--blue);
+}
+
+.admin-hidden-row{
+  display:none !important;
+}
+.admin-filter-no-results{
+  color:var(--text3);
+  border:1px dashed rgba(139,148,158,.22);
+  border-radius:10px;
+  padding:.75rem;
+  margin:.5rem 0;
+  text-align:center;
+}
+
+@media(max-width:900px){
+  .admin-dashboard{grid-template-columns:repeat(2,1fr)}
+  .admin-mini-tabs{grid-template-columns:repeat(2,1fr)}
+  .admin-important-grid{grid-template-columns:1fr 1fr}
+}
+@media(max-width:620px){
+  .admin-dashboard,.admin-mini-tabs,.admin-important-grid{grid-template-columns:1fr}
+  .admin-context-banner{align-items:flex-start;flex-direction:column}
+  .admin-filterbar{grid-template-columns:1fr}
+}
+</style>
+
 </head>
 <body>
 
@@ -3161,6 +3394,314 @@ function openJoinSupportQr(){
 }
 function closeJoinSupportQr(){const m=document.getElementById('joinQrModal');if(m)m.remove();}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr();});
+</script>
+
+
+<script id="admin-dashboard-tabs-v1">
+(function(){
+  let adminPostProcessRunning=false;
+
+  function adminText(el){
+    return (el?.textContent||'').trim();
+  }
+
+  function adminTitleOfBox(box){
+    const title=Array.from(box.children||[]).find(ch=>ch.matches&&ch.matches('h3,.admin-title,.sec-title'));
+    return title||box.querySelector('h3,.admin-title,.sec-title');
+  }
+
+  function adminTitleText(box){
+    const title=adminTitleOfBox(box);
+    return adminText(title).toLowerCase();
+  }
+
+  function adminBadgeForTitle(t){
+    if(t.includes('žádosti')) return ['lock','🔒 soukromá'];
+    if(t.includes('přehled zápasů')) return ['red','🔴 mazání'];
+    if(t.includes('zadat výsledky')||t.includes('upravit kredity')||t.includes('upravit kurzy')||t.includes('výchozí')||t.includes('podpora')) return ['yellow','🟡 ovlivní hráče'];
+    if(t.includes('přidat')||t.includes('nová soutěž')||t.includes('soutěže')) return ['green','🟢 nastavení'];
+    return ['green','🟢 běžné'];
+  }
+
+  function addBadges(box){
+    const title=adminTitleOfBox(box);
+    if(!title||title.querySelector('.admin-section-badge'))return;
+    const [cls,label]=adminBadgeForTitle(adminTitleText(box));
+    const badge=document.createElement('span');
+    badge.className='admin-section-badge '+cls;
+    badge.textContent=label;
+    title.appendChild(badge);
+  }
+
+  function categorizeBox(box){
+    const t=adminTitleText(box);
+    if(t.includes('žádosti')) return 'requests';
+    if(t.includes('nová soutěž')||t==='soutěže'||t.includes('výchozí')||t.includes('podpora')) return 'competitions';
+    if(t.includes('přidat zápas')||t.includes('přidat událost')||t.includes('přehled zápasů')||t.includes('upravit kurzy')||t.includes('zadat výsledky')) return 'matches';
+    if(t.includes('kredity')||t.includes('hráče')||t.includes('účast')||t.includes('přejmenovat')) return 'players';
+    return 'competitions';
+  }
+
+  function parseAdminDate(str){
+    if(typeof parseMatchDate==='function')return parseMatchDate(str);
+    const m=String(str||'').match(/(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+    if(!m)return null;
+    return new Date(+m[3],+m[2]-1,+m[1],+(m[4]||0),+(m[5]||0));
+  }
+
+  function isTodayDate(d){
+    if(!d)return false;
+    const a=new Date();a.setHours(0,0,0,0);
+    const b=new Date(a);b.setDate(b.getDate()+1);
+    return d>=a&&d<b;
+  }
+
+  function makeImportantBox(stats){
+    const box=document.createElement('div');
+    box.className='admin-box admin-important-box open';
+    box.innerHTML=`<h3>Dnes důležité</h3>
+      <div class="admin-important-grid">
+        <div class="admin-important-item">
+          <h4>Začíná do 2 hodin</h4>
+          ${stats.soon.length?`<ul>${stats.soon.slice(0,5).map(x=>`<li>${x}</li>`).join('')}</ul>`:'<div class="empty-mini">Nic akutního.</div>'}
+        </div>
+        <div class="admin-important-item">
+          <h4>Bez kurzů</h4>
+          ${stats.noOdds.length?`<ul>${stats.noOdds.slice(0,5).map(x=>`<li>${x}</li>`).join('')}</ul>`:'<div class="empty-mini">Vše vypadá vyplněné.</div>'}
+        </div>
+        <div class="admin-important-item">
+          <h4>Čeká na výsledek</h4>
+          ${stats.waiting.length?`<ul>${stats.waiting.slice(0,5).map(x=>`<li>${x}</li>`).join('')}</ul>`:'<div class="empty-mini">Nic nečeká.</div>'}
+        </div>
+        <div class="admin-important-item">
+          <h4>Žádosti o vstup</h4>
+          ${stats.requests>0?`<ul><li>${stats.requests} čeká na schválení</li></ul>`:'<div class="empty-mini">Žádné čekající žádosti.</div>'}
+        </div>
+      </div>`;
+    return box;
+  }
+
+  async function getAdminStats(){
+    const stats={today:0,requests:0,unsettled:0,soon:[],noOdds:[],waiting:[]};
+    try{
+      if(currentComp){
+        const {data:matches}=await sb.from('matches').select('*').eq('competition_id',currentComp.id);
+        const now=Date.now();
+        (matches||[]).forEach(m=>{
+          const d=parseAdminDate(m.match_date);
+          const name=(typeof eventTitle==='function'?eventTitle(m):`${m.home} – ${m.away}`);
+          if(isTodayDate(d))stats.today++;
+          if(m.status!=='done'){
+            stats.unsettled++;
+            if(d&&d.getTime()>now&&d.getTime()-now<=2*60*60*1000)stats.soon.push(name);
+            if(d&&d.getTime()<=now)stats.waiting.push(name);
+            const isBinary=(typeof isBinaryEvent==='function')?isBinaryEvent(m):false;
+            if(!isBinary && (!m.odds_home||(!m.odds_draw&&!m.odds_away)))stats.noOdds.push(name);
+            if(isBinary && (!m.odds_home||!m.odds_away))stats.noOdds.push(name);
+          }
+        });
+      }
+      try{
+        const {data:req}=await sb.from('competition_join_requests').select('id').eq('status','pending');
+        stats.requests=(req||[]).length;
+      }catch(e){}
+    }catch(e){}
+    return stats;
+  }
+
+  function makeDashboard(stats){
+    const wrap=document.createElement('div');
+    wrap.className='admin-dashboard';
+    const comp=currentComp?currentComp.name:'Žádná';
+    const qr=(typeof supportBoxEnabled!=='undefined'&&supportBoxEnabled)?'zapnuto':'vypnuto';
+    wrap.innerHTML=`
+      <div class="admin-dash-card"><div class="admin-dash-label">Aktivní soutěž</div><div class="admin-dash-value gold">${escapeHTML(comp)}</div></div>
+      <div class="admin-dash-card"><div class="admin-dash-label">Dnešní zápasy</div><div class="admin-dash-value">${stats.today}</div></div>
+      <div class="admin-dash-card"><div class="admin-dash-label">Čekající žádosti</div><div class="admin-dash-value ${stats.requests?'red':'green'}">${stats.requests}</div></div>
+      <div class="admin-dash-card"><div class="admin-dash-label">Nevyhodnoceno</div><div class="admin-dash-value ${stats.unsettled?'gold':'green'}">${stats.unsettled}</div></div>
+      <div class="admin-dash-card"><div class="admin-dash-label">QR podpora</div><div class="admin-dash-value ${qr==='zapnuto'?'green':'red'}">${qr}</div></div>
+    `;
+    return wrap;
+  }
+
+  function makeContextBanner(){
+    const div=document.createElement('div');
+    div.className='admin-context-banner';
+    const comp=currentComp||{};
+    div.innerHTML=`<div>
+      <div class="admin-context-title">Spravuješ soutěž: <strong>${escapeHTML(comp.name||'Žádná soutěž')}</strong></div>
+      <div class="admin-context-sub">${escapeHTML(comp.league||'')} ${comp.scoring_mode?'· '+escapeHTML(comp.scoring_mode):''}</div>
+    </div>
+    <div class="admin-context-pill">${(typeof isPrivateCompetition==='function'&&isPrivateCompetition(comp))?'🔒 Soukromá':'🌍 Veřejná'}</div>`;
+    return div;
+  }
+
+  function makeTabs(){
+    const tabs=document.createElement('div');
+    tabs.className='admin-mini-tabs';
+    const names=[
+      ['today','⚡ Dnes důležité'],
+      ['competitions','🏆 Soutěže'],
+      ['matches','🏒 Zápasy a události'],
+      ['players','👥 Hráči'],
+      ['requests','🔒 Žádosti']
+    ];
+    tabs.innerHTML=names.map(([key,label])=>`<button class="admin-tab-btn" data-admin-tab="${key}">${label}</button>`).join('');
+    return tabs;
+  }
+
+  function makePanels(){
+    const keys=['today','competitions','matches','players','requests'];
+    const panels={};
+    keys.forEach(k=>{
+      const p=document.createElement('div');
+      p.className='admin-tab-panel';
+      p.dataset.adminPanel=k;
+      panels[k]=p;
+    });
+    return panels;
+  }
+
+  function openDefaultBoxes(root, stats){
+    root.querySelectorAll('.admin-box').forEach(box=>{
+      const t=adminTitleText(box);
+      let open=false;
+      if(t.includes('dnes důležité'))open=true;
+      if(t.includes('žádosti')&&stats.requests>0)open=true;
+      if(t.includes('přidat zápas')||t.includes('přidat událost'))open=true;
+      box.classList.toggle('open', open);
+    });
+  }
+
+  function setupTabs(root){
+    const active=localStorage.getItem('admin_active_mini_tab')||'today';
+    const buttons=root.querySelectorAll('.admin-tab-btn');
+    const panels=root.querySelectorAll('.admin-tab-panel');
+    const setActive=(key)=>{
+      buttons.forEach(b=>b.classList.toggle('active',b.dataset.adminTab===key));
+      panels.forEach(p=>p.classList.toggle('active',p.dataset.adminPanel===key));
+      localStorage.setItem('admin_active_mini_tab',key);
+    };
+    buttons.forEach(b=>b.addEventListener('click',()=>setActive(b.dataset.adminTab)));
+    setActive(active);
+  }
+
+  function findCollapseBody(box){
+    return box.querySelector(':scope > .admin-collapse-body')||box;
+  }
+
+  function setupMatchFilters(root){
+    const overviewBox=Array.from(root.querySelectorAll('.admin-box')).find(b=>adminTitleText(b).includes('přehled zápasů'));
+    if(!overviewBox||overviewBox.dataset.filtersReady==='1')return;
+    const body=findCollapseBody(overviewBox);
+    const rows=Array.from(body.children).filter(ch=>{
+      const txt=adminText(ch).toLowerCase();
+      return ch.tagName==='DIV' && !txt.includes('zobrazuji jen') && txt.length>5;
+    });
+    if(!rows.length)return;
+    overviewBox.dataset.filtersReady='1';
+
+    rows.forEach(row=>{
+      row.classList.add('admin-match-filter-row');
+    });
+
+    const bar=document.createElement('div');
+    bar.className='admin-filterbar';
+    bar.innerHTML=`
+      <select data-filter-date>
+        <option value="today">Dnes</option>
+        <option value="future">Budoucí</option>
+        <option value="all">Vše</option>
+      </select>
+      <select data-filter-status>
+        <option value="open">Nevyhodnocené</option>
+        <option value="done">Hotové</option>
+        <option value="all">Vše</option>
+      </select>
+      <input data-filter-search type="search" placeholder="Hledat tým / událost…">
+    `;
+    const firstInfo=Array.from(body.children).find(ch=>adminText(ch).toLowerCase().includes('zobrazuji jen'));
+    if(firstInfo)firstInfo.after(bar); else body.prepend(bar);
+
+    const empty=document.createElement('div');
+    empty.className='admin-filter-no-results';
+    empty.style.display='none';
+    empty.textContent='Nic neodpovídá filtru.';
+    body.appendChild(empty);
+
+    const apply=()=>{
+      const dFilter=bar.querySelector('[data-filter-date]').value;
+      const sFilter=bar.querySelector('[data-filter-status]').value;
+      const q=bar.querySelector('[data-filter-search]').value.trim().toLowerCase();
+      let visible=0;
+      rows.forEach(row=>{
+        const text=adminText(row).toLowerCase();
+        const d=parseAdminDate(text);
+        let ok=true;
+        if(dFilter==='today')ok=ok&&isTodayDate(d);
+        if(dFilter==='future')ok=ok&&(!d||!isTodayDate(d));
+        if(sFilter==='done')ok=ok&&text.includes('ukončeno');
+        if(sFilter==='open')ok=ok&&!text.includes('ukončeno');
+        if(q)ok=ok&&text.includes(q);
+        row.classList.toggle('admin-hidden-row',!ok);
+        if(ok)visible++;
+      });
+      empty.style.display=visible?'none':'block';
+    };
+    bar.addEventListener('input',apply);
+    bar.addEventListener('change',apply);
+    apply();
+  }
+
+  async function enhanceAdmin(){
+    if(adminPostProcessRunning)return;
+    const root=document.getElementById('adminContent');
+    if(!root||root.dataset.dashboardDone==='1')return;
+    const originalBoxes=Array.from(root.children).filter(ch=>ch.classList&&ch.classList.contains('admin-box'));
+    if(!originalBoxes.length)return;
+    adminPostProcessRunning=true;
+
+    const stats=await getAdminStats();
+
+    originalBoxes.forEach(addBadges);
+
+    const panels=makePanels();
+    panels.today.appendChild(makeImportantBox(stats));
+
+    originalBoxes.forEach(box=>{
+      panels[categorizeBox(box)].appendChild(box);
+    });
+
+    root.innerHTML='';
+    root.appendChild(makeDashboard(stats));
+    root.appendChild(makeContextBanner());
+    const tabs=makeTabs();
+    root.appendChild(tabs);
+    Object.values(panels).forEach(p=>root.appendChild(p));
+
+    openDefaultBoxes(root,stats);
+    setupTabs(root);
+    setupMatchFilters(root);
+
+    root.dataset.dashboardDone='1';
+    adminPostProcessRunning=false;
+  }
+
+  const oldRenderAdmin=window.renderAdmin;
+  if(typeof oldRenderAdmin==='function'){
+    window.renderAdmin=async function(){
+      const result=await oldRenderAdmin.apply(this,arguments);
+      const root=document.getElementById('adminContent');
+      if(root)delete root.dataset.dashboardDone;
+      setTimeout(enhanceAdmin,0);
+      return result;
+    };
+  }
+
+  document.addEventListener('DOMContentLoaded',function(){
+    setTimeout(enhanceAdmin,400);
+  });
+})();
 </script>
 
 </body>
