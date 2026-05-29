@@ -234,140 +234,151 @@ select:focus{border-color:var(--blue)}
 .sec-title::before{content:'';width:4px;height:14px;border-radius:999px;background:var(--gold);box-shadow:0 0 10px rgba(227,179,65,.5)}
 </style>
 
-<style id="unified-glass-boxes-stable-fix">
+
+
+
+<style id="unified-glass-and-skeleton-v2">
 :root{
   --glass-bg: linear-gradient(135deg, rgba(22,27,34,.88), rgba(18,24,32,.78));
+  --glass-bg-strong: linear-gradient(135deg, rgba(22,27,34,.94), rgba(18,24,32,.84));
   --glass-border: rgba(139,148,158,.24);
   --glass-border-gold: rgba(227,179,65,.36);
   --glass-shadow: 0 14px 34px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.035);
   --glass-shadow-gold: 0 14px 34px rgba(0,0,0,.30), 0 0 22px rgba(227,179,65,.07), inset 0 1px 0 rgba(255,255,255,.045);
 }
-
-/* Sjednocené skleněné boxy — pouze vzhled, bez zásahu do načítání zápasů */
-.rules-box,
-.reward-box,
-.updates-box,
-.lb-extra-card,
-.admin-box{
+.rules-box,.reward-box,.updates-box,.lb-extra-card,.admin-box,.competition-card,.match-card,.login-card,.modal-card{
   background: var(--glass-bg) !important;
   border: 1px solid var(--glass-border) !important;
   border-radius: 14px !important;
   backdrop-filter: blur(12px) saturate(120%) !important;
   -webkit-backdrop-filter: blur(12px) saturate(120%) !important;
   box-shadow: var(--glass-shadow) !important;
-  padding: 1rem 1.05rem !important;
-  margin-bottom: 1rem !important;
   overflow: hidden;
   position: relative;
 }
-
-.rules-box::before,
-.reward-box::before,
-.updates-box::before,
-.lb-extra-card::before,
-.admin-box::before{
-  content:"";
-  position:absolute;
-  left:0;
-  top:0;
-  right:0;
-  height:1px;
-  background:linear-gradient(90deg, transparent, rgba(255,255,255,.16), transparent);
-  pointer-events:none;
+.rules-box,.reward-box,.updates-box,.lb-extra-card,.admin-box{
+  padding: 1rem 1.05rem !important;
+  margin-bottom: 1rem !important;
 }
-
-.reward-box,
-.updates-box,
-.lb-extra-card{
-  border-color: var(--glass-border-gold) !important;
-  box-shadow: var(--glass-shadow-gold) !important;
+.match-card{background: var(--glass-bg-strong) !important;}
+.rules-box::before,.reward-box::before,.updates-box::before,.lb-extra-card::before,.admin-box::before,.competition-card::before,.match-card::before,.login-card::before,.modal-card::before{
+  content:"";position:absolute;left:0;top:0;right:0;height:1px;
+  background:linear-gradient(90deg, transparent, rgba(255,255,255,.16), transparent);pointer-events:none;
 }
-
-.rules-box h3,
-.reward-title,
-.updates-box h3,
-.lb-extra-title,
-.admin-box h3{
-  color: var(--gold) !important;
-  font-family: 'DM Sans', sans-serif !important;
-  font-size: 12px !important;
-  line-height: 1.2 !important;
-  font-weight: 800 !important;
-  letter-spacing: 1.15px !important;
-  text-transform: uppercase !important;
-  margin: 0 0 .85rem !important;
-  text-shadow: 0 0 12px rgba(227,179,65,.16);
+.reward-box,.updates-box,.lb-extra-card{border-color: var(--glass-border-gold) !important;box-shadow: var(--glass-shadow-gold) !important;}
+.rules-box h3,.reward-title,.updates-box h3,.lb-extra-title,.admin-box h3{
+  color: var(--gold) !important;font-family:'DM Sans',sans-serif !important;font-size:12px !important;line-height:1.2 !important;
+  font-weight:800 !important;letter-spacing:1.15px !important;text-transform:uppercase !important;margin:0 0 .85rem !important;
+  text-shadow:0 0 12px rgba(227,179,65,.16);
 }
-
-.rule-item,
-.stat-pill,
-.update-item,
-.hof-line,
-.admin-match-row,
-.odd-edit-row{
-  background: rgba(13,17,23,.34) !important;
-  border: 1px solid rgba(139,148,158,.18) !important;
-  border-radius: 10px !important;
+.rule-item,.stat-pill,.update-item,.hof-line,.admin-match-row,.odd-edit-row{
+  background: rgba(13,17,23,.34) !important;border:1px solid rgba(139,148,158,.18) !important;border-radius:10px !important;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
 }
-
-.updates-box{
-  padding: .8rem .9rem !important;
+.updates-box{padding:.8rem .9rem !important;}
+.update-item{padding:.5rem .65rem !important;min-height:auto !important;}
+.reward-box{background:radial-gradient(circle at 18% 20%, rgba(227,179,65,.10), transparent 36%), var(--glass-bg) !important;}
+.reward-img{border-radius:12px !important;border:1px solid rgba(227,179,65,.42) !important;box-shadow:0 12px 30px rgba(0,0,0,.34),0 0 18px rgba(227,179,65,.10) !important;}
+.stat-grid{gap:10px !important;}
+.stat-pill{padding:.78rem .85rem !important;}
+.lb-top-label,.rank-label,.top3-label,.leader-badge,.podium-label,.team-flag,.country-flag,.flag-icon,.ms-flag{
+  display:none !important;width:0 !important;min-width:0 !important;padding:0 !important;margin:0 !important;border:0 !important;
 }
-.update-item{
-  padding: .5rem .65rem !important;
-  min-height: auto !important;
-}
+.lb-name-cell::after{content:none !important;}
 
-.reward-box{
+/* Jemný skeleton loading */
+.skeleton-wrap{width:min(920px, calc(100% - 24px));margin:1.2rem auto;}
+.skeleton-card{
+  background:var(--glass-bg-strong);border:1px solid rgba(139,148,158,.20);border-radius:14px;box-shadow:var(--glass-shadow);
+  overflow:hidden;padding:1rem;margin-bottom:1rem;backdrop-filter:blur(12px) saturate(120%);-webkit-backdrop-filter:blur(12px) saturate(120%);
+}
+.skeleton-head{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding-bottom:.9rem;border-bottom:1px solid rgba(139,148,158,.14);margin-bottom:.95rem;}
+.skeleton-line,.skeleton-pill,.skeleton-box{position:relative;overflow:hidden;background:rgba(139,148,158,.12);border-radius:10px;}
+.skeleton-line::after,.skeleton-pill::after,.skeleton-box::after{
+  content:"";position:absolute;inset:0;transform:translateX(-100%);
+  background:linear-gradient(90deg, transparent, rgba(255,255,255,.08), transparent);animation:skeletonShimmer 1.35s infinite;
+}
+.skeleton-title{width:42%;height:22px;}
+.skeleton-date{width:18%;height:14px;margin-top:.45rem;opacity:.75;}
+.skeleton-pill{width:76px;height:28px;border-radius:999px;}
+.skeleton-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.55rem;margin-bottom:.85rem;}
+.skeleton-box{height:64px;}
+.skeleton-wide{display:grid;grid-template-columns:repeat(2,1fr);gap:.55rem;}
+.skeleton-wide .skeleton-box{height:60px;}
+.skeleton-footer{display:flex;align-items:center;gap:.75rem;margin-top:1rem;}
+.skeleton-input{width:130px;height:42px;}
+.skeleton-button{flex:1;height:46px;border-radius:10px;}
+@keyframes skeletonShimmer{100%{transform:translateX(100%);}}
+.loading-spinner{display:none !important;}
+.loading:not(.skeleton-wrap){display:none !important;}
+@media (max-width:700px){
+  .rules-box,.reward-box,.updates-box,.lb-extra-card,.admin-box{border-radius:12px !important;padding:.85rem !important;}
+  .skeleton-grid,.skeleton-wide{grid-template-columns:1fr;}
+  .skeleton-title{width:70%;}.skeleton-date{width:40%;}
+  .skeleton-footer{flex-direction:column;align-items:stretch;}
+  .skeleton-input,.skeleton-button{width:100%;}
+}
+</style>
+
+
+<style id="competition-participation-v1">
+.join-gate{
+  width:min(760px,calc(100% - 24px));
+  margin:1.2rem auto;
+  padding:1.35rem;
+  border-radius:16px;
   background:
-    radial-gradient(circle at 18% 20%, rgba(227,179,65,.10), transparent 36%),
-    var(--glass-bg) !important;
+    radial-gradient(circle at 18% 20%, rgba(227,179,65,.12), transparent 36%),
+    linear-gradient(135deg, rgba(22,27,34,.92), rgba(18,24,32,.82));
+  border:1px solid rgba(227,179,65,.34);
+  box-shadow:0 16px 38px rgba(0,0,0,.32),0 0 24px rgba(227,179,65,.08),inset 0 1px 0 rgba(255,255,255,.04);
+  text-align:center;
 }
-.reward-img{
-  border-radius: 12px !important;
-  border: 1px solid rgba(227,179,65,.42) !important;
-  box-shadow: 0 12px 30px rgba(0,0,0,.34), 0 0 18px rgba(227,179,65,.10) !important;
+.join-kicker{
+  color:var(--gold);
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:1.1px;
+  text-transform:uppercase;
+  margin-bottom:.45rem;
 }
-
-.stat-grid{
-  gap: 10px !important;
+.join-gate h2{
+  margin:.2rem 0 .55rem;
+  font-size:24px;
+  color:var(--text);
 }
-.stat-pill{
-  padding: .78rem .85rem !important;
+.join-gate p{
+  max-width:560px;
+  margin:0 auto .9rem;
+  color:var(--text2);
+  line-height:1.5;
 }
-
-/* Pryč s prázdnými TOP3 štítky / čárkami v žebříčku */
-.lb-top-label,
-.rank-label,
-.top3-label,
-.leader-badge,
-.podium-label,
-.team-flag,
-.country-flag,
-.flag-icon,
-.ms-flag{
-  display:none !important;
-  width:0 !important;
-  min-width:0 !important;
-  padding:0 !important;
-  margin:0 !important;
-  border:0 !important;
+.join-benefit{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:.55rem .85rem;
+  border-radius:999px;
+  border:1px solid rgba(227,179,65,.35);
+  background:rgba(227,179,65,.10);
+  color:var(--gold);
+  font-weight:800;
+  margin-bottom:1rem;
 }
-
-.lb-name-cell::after{
-  content:none !important;
+.join-warning{
+  margin:.75rem auto 1rem;
+  max-width:620px;
+  padding:.75rem .9rem;
+  border-radius:12px;
+  border:1px solid rgba(248,81,73,.35);
+  background:rgba(248,81,73,.10);
+  color:#ffb4ad;
+  font-size:13px;
+  line-height:1.45;
 }
-
-@media (max-width: 700px){
-  .rules-box,
-  .reward-box,
-  .updates-box,
-  .lb-extra-card,
-  .admin-box{
-    border-radius: 12px !important;
-    padding: .85rem !important;
-  }
+.join-btn{
+  width:min(420px,100%);
+  margin:0 auto;
 }
 </style>
 
@@ -492,6 +503,7 @@ const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSI
 const ADMIN_USERNAME='Dany';
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 let currentUser=null,currentComp=null,allActiveComps=[],allMatches=[],allTips=[];
+let currentMembership=null,membershipTableAvailable=true;
 let matchLockRefreshTimer=null;
 const pending={};
 
@@ -522,7 +534,7 @@ async function doRegister(){
   if(!u||!p){err.textContent='Vyplň vše.';return;}
   if(p!==p2){err.textContent='Hesla se neshodují.';return;}
   if(u.length<2){err.textContent='Přezdívka musí mít alespoň 2 znaky.';return;}
-  const{data,error}=await sb.from('users').insert({username:u,password:p,credits:10000}).select().single();
+  const{data,error}=await sb.from('users').insert({username:u,password:p,credits:0}).select().single();
   if(error){err.textContent=error.message.includes('unique')?'Tato přezdívka je obsazená.':'Chyba: '+error.message;return;}
   currentUser=data;localStorage.setItem('tip_user',JSON.stringify({id:data.id}));await openMain();
 }
@@ -557,6 +569,7 @@ async function getCurrentUserPoints(){
 async function updateCreditsDisplay(){
   const el=document.getElementById('topCredits');
   if(!el||!currentUser)return;
+  if(currentComp && !(await canAccessCurrentCompetition())){el.textContent='Nepřipojen';return;}
   if(isPointsCompetition()){
     try{
       const points=await getCurrentUserPoints();
@@ -575,6 +588,7 @@ async function loadActiveComp(){
   allActiveComps=data||[];
   const savedId=localStorage.getItem('tip_competition_id');
   currentComp=allActiveComps.find(c=>c.id===savedId)||allActiveComps[0]||null;
+  await refreshCurrentMembership();
   renderCompetitionSwitch();
 }
 
@@ -594,6 +608,7 @@ async function switchCompetition(id){
   if(!selected)return;
   currentComp=selected;
   localStorage.setItem('tip_competition_id',id);
+  await refreshCurrentMembership();
   renderCompetitionSwitch();
   renderRules();
   await settleWinnings();
@@ -633,6 +648,140 @@ function isPointsCompetition(comp=currentComp){
   const mode=String(comp.scoring_mode||comp.type||'').toLowerCase();
   return mode==='points'||mode==='bodova'||mode==='bodová'||league.includes('mistrovství')||league.includes('mistrovstvi');
 }
+
+async function refreshCurrentMembership(){
+  currentMembership=null;
+  membershipTableAvailable=true;
+  if(!currentUser||!currentComp)return null;
+  try{
+    const{data,error}=await sb
+      .from('competition_players')
+      .select('*')
+      .eq('competition_id',currentComp.id)
+      .eq('user_id',currentUser.id)
+      .maybeSingle();
+    if(error){
+      membershipTableAvailable=false;
+      console.warn('competition_players:',error);
+      return null;
+    }
+    currentMembership=data||null;
+    return currentMembership;
+  }catch(e){
+    membershipTableAvailable=false;
+    console.warn('competition_players:',e);
+    return null;
+  }
+}
+
+async function hasExistingTipInCurrentCompetition(){
+  if(!currentUser||!currentComp)return false;
+  try{
+    const{data:matches}=await sb.from('matches').select('id').eq('competition_id',currentComp.id);
+    const ids=(matches||[]).map(m=>m.id);
+    if(!ids.length)return false;
+    const{data}=await sb.from('tips').select('id').eq('user_id',currentUser.id).in('match_id',ids).limit(1);
+    return !!(data&&data.length);
+  }catch(e){
+    return false;
+  }
+}
+
+async function canAccessCurrentCompetition(){
+  if(!currentComp||!currentUser)return false;
+  if(currentUser.username===ADMIN_USERNAME)return true;
+  if(currentMembership&&currentMembership.active!==false)return true;
+  if(await hasExistingTipInCurrentCompetition())return true; // starší účastníci se stávajícími tipy neztratí přístup
+  return false;
+}
+
+function competitionJoinText(){
+  if(isPointsCompetition()){
+    return {
+      title:'Připojit se k bodové soutěži',
+      desc:'Po připojení se zobrazíš v žebříčku a budeš moct tipovat zápasy. Začínáš od 0 bodů.',
+      benefit:'🎯 Hraje se na body'
+    };
+  }
+  return {
+    title:'Připojit se ke kreditové soutěži',
+    desc:'Po připojení se zobrazíš v žebříčku, odemknou se ti zápasy a dostaneš startovní kredity.',
+    benefit:'💰 Startovní kredity: 10 000 kr'
+  };
+}
+
+function renderJoinCompetitionGate(){
+  const c=currentComp||{};
+  const t=competitionJoinText();
+  const setupWarning=membershipTableAvailable?'':`<div class="join-warning">⚠️ Tabulka účastí zatím není dostupná v Supabase. Admin musí doplnit tabulku <strong>competition_players</strong>.</div>`;
+  return `<div class="join-gate">
+    <div class="join-kicker">🏆 ${escapeHTML(c.name||'Soutěž')}</div>
+    <h2>${t.title}</h2>
+    <p>${t.desc}</p>
+    <div class="join-benefit">${t.benefit}</div>
+    ${setupWarning}
+    <button class="btn-tip join-btn" onclick="joinCurrentCompetition()">Chci se zapojit →</button>
+  </div>`;
+}
+
+async function joinCurrentCompetition(){
+  if(!currentUser||!currentComp)return;
+  const btn=document.querySelector('.join-btn');
+  if(btn){btn.disabled=true;btn.textContent='Připojuji...';}
+  try{
+    const payload={
+      competition_id:currentComp.id,
+      user_id:currentUser.id,
+      active:true,
+      credits:isPointsCompetition()?0:10000,
+      points:0
+    };
+    const{data,error}=await sb.from('competition_players').insert(payload).select('*').single();
+    if(error){
+      membershipTableAvailable=false;
+      alert('Účast se nepodařilo uložit. V Supabase musí existovat tabulka competition_players. Chyba: '+error.message);
+      if(btn){btn.disabled=false;btn.textContent='Chci se zapojit →';}
+      return;
+    }
+    currentMembership=data;
+
+    // Současný web stále používá kredity v tabulce users, proto novému hráči při vstupu do kreditové soutěže doplníme start.
+    if(!isPointsCompetition() && Number(currentUser.credits||0)<=0){
+      const{data:userAfter,error:userErr}=await sb.from('users').update({credits:10000}).eq('id',currentUser.id).select('*').single();
+      if(!userErr&&userAfter)currentUser=userAfter;
+    }
+
+    await updateCreditsDisplay();
+    await renderMatches();
+    await loadTicker();
+  }catch(e){
+    alert('Účast se nepodařilo uložit: '+(e.message||e));
+    if(btn){btn.disabled=false;btn.textContent='Chci se zapojit →';}
+  }
+}
+
+async function getCompetitionParticipantUserIds(compMatchIds=[],allTipsForComp=[]){
+  const ids=new Set();
+  if(!currentComp)return ids;
+  try{
+    const{data,error}=await sb
+      .from('competition_players')
+      .select('user_id,active')
+      .eq('competition_id',currentComp.id);
+    if(!error && data){
+      data.forEach(r=>{if(r.active!==false&&r.user_id)ids.add(r.user_id);});
+    }else if(error){
+      membershipTableAvailable=false;
+    }
+  }catch(e){
+    membershipTableAvailable=false;
+  }
+  // Zpětná kompatibilita: kdo už má v soutěži tipy, zůstane v žebříčku.
+  (allTipsForComp||[]).forEach(t=>{if(t.user_id)ids.add(t.user_id);});
+  return ids;
+}
+
+
 
 function renderRules(){
   const grid=document.getElementById('rulesGrid');
@@ -704,6 +853,15 @@ async function loadTicker(){
       const pts={};
       (allSettledTips||[]).forEach(t=>{pts[t.user_id]=(pts[t.user_id]||0)+(Number(t.winnings)||0);});
       sorted=(users||[]).map(u=>({...u,_points:pts[u.id]||0})).sort((a,b)=>b._points-a._points);
+    }
+    if(currentComp){
+      try{
+        const{data:compMatchesForParticipants}=await sb.from('matches').select('id').eq('competition_id',currentComp.id);
+        const compIdsForParticipants=(compMatchesForParticipants||[]).map(m=>m.id);
+        const{data:tipsForParticipants}=compIdsForParticipants.length?await sb.from('tips').select('user_id,match_id').in('match_id',compIdsForParticipants):{data:[]};
+        const participantIds=await getCompetitionParticipantUserIds(compIdsForParticipants,tipsForParticipants||[]);
+        if(participantIds.size)sorted=sorted.filter(u=>participantIds.has(u.id));
+      }catch(e){}
     }
     const leader=sorted[0];
     const second=sorted[1];
@@ -1284,6 +1442,7 @@ function refreshVisibleMatchLocks(){
 async function renderMatches(){
   const el=document.getElementById('matchList');
   if(!currentComp){el.innerHTML='<div class="empty">Žádná aktivní soutěž.</div>';return;}
+  if(!(await canAccessCurrentCompetition())){el.innerHTML=renderJoinCompetitionGate();return;}
   const{data:matches}=await sb.from('matches').select('*').eq('competition_id',currentComp.id).order('match_date');
   if(!matches||!matches.length){el.innerHTML='<div class="empty">Zatím žádné zápasy.</div>';return;}
   const visibleMatches=matches.filter(m=>!isMatchOlderThanDays(m,2));
@@ -1435,6 +1594,7 @@ function updatePotential(mid){
 }
 
 async function placeTip(mid){
+  if(!(await canAccessCurrentCompetition())){alert('Nejdřív se připoj k této soutěži.');return;}
   const pointsMode=isPointsCompetition();
   const existing=allTips.find(t=>t.match_id===mid);
   const btn=document.getElementById('tipBtn_'+mid);
@@ -1524,6 +1684,7 @@ async function renderMyTips(){
   const el=document.getElementById('myTipsList');
   el.innerHTML='<div class="loading"><div class="spin"></div><br>Načítám...</div>';
   if(!currentComp){el.innerHTML='<div class="empty">Žádná aktivní soutěž.</div>';return;}
+  if(!(await canAccessCurrentCompetition())){el.innerHTML=renderJoinCompetitionGate();return;}
   const pointsMode=isPointsCompetition();
   const{data:matches}=await sb.from('matches').select('*').eq('competition_id',currentComp.id).order('match_date',{ascending:false});
   const{data:tips}=await sb.from('tips').select('*').eq('user_id',currentUser.id);
@@ -1577,9 +1738,9 @@ async function renderLeaderboard(){
   await updateCreditsDisplay();
   const el=document.getElementById('leaderboardContent');
   el.innerHTML='<div class="loading"><div class="spin"></div><br>Načítám...</div>';
+  if(currentComp && !(await canAccessCurrentCompetition())){el.innerHTML=renderJoinCompetitionGate();return;}
   const pointsMode=isPointsCompetition();
   const{data:users}=await sb.from('users').select('*');
-  usersCache=users||[];
   const{data:tips}=await sb.from('tips').select('*');
   let compMatches=[];
   let compMatchIds=[];
@@ -1590,8 +1751,11 @@ async function renderLeaderboard(){
     compMatchIds=compMatches.map(m=>m.id);
     compMatches.forEach(m=>{matchById[String(m.id)]=m;});
   }
+  const participantIds=await getCompetitionParticipantUserIds(compMatchIds,tips||[]);
+  const leaderboardUsers=currentComp?(users||[]).filter(u=>participantIds.has(u.id)):(users||[]);
+  usersCache=leaderboardUsers||[];
   const START_CREDITS=10000;
-  const ranked=(users||[]).map(u=>{
+  const ranked=(leaderboardUsers||[]).map(u=>{
     const mt=(tips||[]).filter(t=>t.user_id===u.id&&(!currentComp||compMatchIds.includes(t.match_id)));
     const settled=mt.filter(t=>t.settled);
     const pendingTips=mt.filter(t=>!t.settled);
@@ -1939,5 +2103,43 @@ async function saveResult(mid){
   alert('Výsledek uložen a tipy všech hráčů přepočítány!');renderAdmin();renderMatches();
 }
 </script>
+
+<script id="skeleton-loading-v2">
+(function(){
+  function skeletonHTML(){
+    var card = '<div class="skeleton-card"><div class="skeleton-head"><div style="flex:1"><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-date"></div></div><div class="skeleton-pill"></div></div><div class="skeleton-grid"><div class="skeleton-box"></div><div class="skeleton-box"></div><div class="skeleton-box"></div></div><div class="skeleton-wide"><div class="skeleton-box"></div><div class="skeleton-box"></div></div><div class="skeleton-footer"><div class="skeleton-box skeleton-input"></div><div class="skeleton-box skeleton-button"></div></div></div>';
+    return '<div class="skeleton-wrap" id="skeletonLoading">' + card + card + card + '</div>';
+  }
+  function isEmptyOrLoading(el){
+    if(!el) return false;
+    var text=(el.textContent||'').trim().toLowerCase();
+    return !text || text.indexOf('načítám')>=0 || text.indexOf('nacitam')>=0;
+  }
+  function showSkeleton(){
+    var candidates=[
+      document.getElementById('matchesList'),
+      document.getElementById('content'),
+      document.getElementById('app'),
+      document.querySelector('.content'),
+      document.querySelector('main')
+    ].filter(Boolean);
+    var target=candidates.find(isEmptyOrLoading) || candidates[0];
+    if(!target || document.getElementById('skeletonLoading')) return;
+    if(isEmptyOrLoading(target)) target.innerHTML=skeletonHTML();
+  }
+  function cleanup(){
+    var sk=document.getElementById('skeletonLoading');
+    if(!sk) return;
+    var parent=sk.parentElement;
+    if(!parent) return;
+    if(parent.querySelector('.match-card, .rules-box, .lb-table, .reward-box') && parent.children.length>1) sk.remove();
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', showSkeleton);
+  else showSkeleton();
+  setTimeout(showSkeleton,250);
+  setInterval(cleanup,700);
+})();
+</script>
+
 </body>
 </html>
