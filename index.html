@@ -656,6 +656,23 @@ body.support-hidden .join-support-box{display:none !important}
 @media(max-width:720px){.support-admin-row{flex-direction:column;align-items:stretch}#supportToggleBtn{width:100%}}
 </style>
 
+
+<style id="vsehochut-events-v1">
+.event-card{
+  border-color:rgba(227,179,65,.32) !important;
+}
+.event-card .match-teams::before{
+  content:'🎲 ';
+}
+.event-tip-form .tip-label{
+  color:var(--gold);
+}
+.event-result-big{
+  font-size:32px !important;
+  color:var(--gold);
+}
+</style>
+
 </head>
 <body>
 
@@ -991,6 +1008,18 @@ function getJoinCompetitionText(){
   };
 }
 
+
+
+function isVsehochutCompetition(comp=currentComp){
+  return String(comp?.league||comp?.name||'').toLowerCase().includes('všehochuť') ||
+         String(comp?.league||comp?.name||'').toLowerCase().includes('vsehochut');
+}
+function isBinaryEvent(match){
+  return String(match?.event_type||'').toLowerCase()==='binary';
+}
+function eventTitle(match){
+  return isBinaryEvent(match) ? (match.event_question || `${match.home} / ${match.away}`) : `${match.home} – ${match.away}`;
+}
 
 function isPrivateCompetition(comp=currentComp){
   return String(comp?.access_type||'public').toLowerCase()==='private';
@@ -1542,6 +1571,14 @@ function evaluateTip(match,tip){
   if(match.result_home===null||match.result_home===undefined)return null;
   if(match.result_away===null||match.result_away===undefined)return null;
   const rh=Number(match.result_home),ra=Number(match.result_away);
+  if(isBinaryEvent(match)){
+    const stake=Number(tip.stake||0);
+    if(!stake)return 0;
+    const actualOutcome=rh>ra?'home':ra>rh?'away':null;
+    if(!actualOutcome||tip.outcome!==actualOutcome)return 0;
+    const odds=tip.outcome==='home'?parseFloat(match.odds_home):parseFloat(match.odds_away);
+    return odds>1?Math.round(stake*odds):stake;
+  }
   const dec=match.decision||'reg';
 
   // 1X2 je VÝSLEDEK ZÁKLADNÍ DOBY.
@@ -1811,10 +1848,17 @@ async function renderMatches(){
     const statusAttr=!isDone?` data-lock-date="${escapeHTML(m.match_date)}"`:'';
     const sCls=m.status==='live'?'s-live':isDone?'s-done':locked?'s-live':'s-soon lock-countdown';
     const sTxt=m.status==='live'?'● Hraje se':isDone?'✓ Hotovo':locked?'● Hraje se':formatLockCountdown(m);
-    html+=`<div class="match-card" data-match-id="${m.id}" data-match-date="${escapeHTML(m.match_date)}" data-done="${isDone?'1':'0'}"><div class="match-head"><div><div class="match-teams">${m.home} – ${m.away}</div><div class="match-date">${m.match_date}</div></div><span class="${sCls}"${statusAttr}>${sTxt}</span></div>`;
+    const binaryEvent=isBinaryEvent(m);
+    const titleText=eventTitle(m);
+    html+=`<div class="match-card ${binaryEvent?'event-card':''}" data-match-id="${m.id}" data-match-date="${escapeHTML(m.match_date)}" data-done="${isDone?'1':'0'}"><div class="match-head"><div><div class="match-teams">${escapeHTML(titleText)}</div><div class="match-date">${m.match_date}${binaryEvent?' · Všehochuť událost':''}</div></div><span class="${sCls}"${statusAttr}>${sTxt}</span></div>`;
     if(isDone&&m.result_home!==null){
-      const dec=m.decision==='reg'?'Reg. čas':m.decision==='ot'?'Prodloužení':'Nájezdy';
-      html+=`<div class="result-big">${m.result_home} : ${m.result_away}</div><div class="result-dec">${dec}</div>`;
+      if(binaryEvent){
+        const eventWinner=Number(m.result_home)>Number(m.result_away)?m.home:m.away;
+        html+=`<div class="result-big event-result-big">${escapeHTML(eventWinner)}</div><div class="result-dec">Vyhodnocená událost</div>`;
+      }else{
+        const dec=m.decision==='reg'?'Reg. čas':m.decision==='ot'?'Prodloužení':'Nájezdy';
+        html+=`<div class="result-big">${m.result_home} : ${m.result_away}</div><div class="result-dec">${dec}</div>`;
+      }
     }
     const matchStarted=locked&&!isDone;
     const pointsMode=isPointsCompetition();
@@ -1833,6 +1877,25 @@ async function renderMatches(){
           </div>
           <div style="font-size:12px;color:var(--text3);padding:0 1rem 10px">Bodování: přesný výsledek = 5 bodů max. Když trefíš přesně, další body se nepřičítají.</div>
           <button type="button" class="btn-tip" onclick="placeTip('${m.id}')" id="tipBtn_${m.id}">${myTip?'✓ Aktualizovat tip':'Potvrdit tip →'}</button>
+        </div>`;
+      }else if(binaryEvent&&m.odds_home){
+        const sel=pending[m.id]?.outcome||myTip?.outcome||'';
+        const stakeVal=myTip?.stake||500;
+        html+=`<div class="tip-form event-tip-form" id="tipForm_${m.id}" data-match-id="${m.id}">
+          <input type="hidden" id="tipkey_${m.id}" value="${sel?'outcome':''}">
+          <input type="hidden" id="tipval_${m.id}" value="${sel||''}">
+          <div class="tip-label">Vyber možnost</div>
+          <div class="odds-2">
+            <button type="button" class="odd-btn ${sel==='home'?'sel':''}" data-tip-key="outcome" data-tip-val="home" onclick="selOpt('${m.id}','outcome','home',this)"><div class="on">${escapeHTML(m.home)}</div><div class="ov">${parseFloat(m.odds_home).toFixed(2)}</div></button>
+            <button type="button" class="odd-btn ${sel==='away'?'sel':''}" data-tip-key="outcome" data-tip-val="away" onclick="selOpt('${m.id}','outcome','away',this)"><div class="on">${escapeHTML(m.away)}</div><div class="ov">${parseFloat(m.odds_away).toFixed(2)}</div></button>
+          </div>
+          <div class="stake-row">
+            <label>Sázka</label>
+            <input type="number" class="stake-inp" id="st_${m.id}" min="100" step="100" value="${stakeVal}" oninput="updatePotential('${m.id}')">
+            <span class="stake-unit">kr</span>
+            <span class="potential" id="pot_${m.id}"></span>
+          </div>
+          <button type="button" class="btn-tip" onclick="placeTip('${m.id}')" id="tipBtn_${m.id}" data-tip-key="${sel?'outcome':''}" data-tip-val="${sel||''}">${myTip?'✓ Aktualizovat tip':'Potvrdit tip →'}</button>
         </div>`;
       }else if(m.odds_home){
         const sel=pending[m.id]?.outcome||myTip?.outcome||'';
@@ -2024,6 +2087,7 @@ async function placeTip(mid){
     if(existing.decision)applyPick('decision',existing.decision);
     else if(existing.outcome)applyPick('outcome',existing.outcome);
   }
+  if(!outcome&&!decision){alert('Vyber tip.');btn.disabled=false;btn.textContent=existing?'✓ Aktualizovat tip':'Potvrdit tip →';return;}
   const tipData={user_id:currentUser.id,match_id:mid,outcome,decision,goals:null,score_home:null,score_away:null,stake,settled:false,winnings:0};
   if(existing){await sb.from('tips').update(tipData).eq('id',existing.id);const idx=allTips.findIndex(t=>t.match_id===mid);allTips[idx]={...existing,...tipData};}
   else{const{data}=await sb.from('tips').insert(tipData).select().single();if(data)allTips.push(data);}
@@ -2291,7 +2355,7 @@ async function renderAdmin(){
   const visibleAdminMatches=matches.filter(isMatchTodayOrFuture);
   let html=`<div class="admin-box"><h3>Nová soutěž</h3>
     <div class="field"><label>Název</label><input type="text" id="compName" placeholder="NHL Playoff 2026"></div>
-    <div class="field"><label>Liga</label><select id="compLeague" onchange="setCompetitionPreset()"><option value="nhl">NHL</option><option value="extraliga">Česká extraliga</option><option value="Mistrovství světa">Mistrovství světa</option></select></div>
+    <div class="field"><label>Liga</label><select id="compLeague" onchange="setCompetitionPreset()"><option value="nhl">NHL</option><option value="extraliga">Česká extraliga</option><option value="Mistrovství světa">Mistrovství světa</option><option value="Všehochuť">Všehochuť</option></select></div>
     <div class="field"><label>Typ soutěže</label><select id="compScoringMode"><option value="credits">Kurzová soutěž za kredity</option><option value="points">Bodová soutěž bez kurzů</option></select></div>
     <div class="field"><label>Přístup</label><select id="compAccessType"><option value="public">Veřejná — hráč se připojí sám</option><option value="private">Soukromá — schvaluje admin</option></select></div>
     <div class="field"><label>Sezóna</label><input type="text" id="compSeason" placeholder="2025/26"></div>
@@ -2354,6 +2418,23 @@ async function renderAdmin(){
       <button class="btn-a btn-g" onclick="addMatch()" style="width:100%">Přidat zápas</button>
     </div>`;
 
+    if(isVsehochutCompetition(currentComp)&&!pointsMode){
+      html+=`<div class="admin-box"><h3>Přidat událost → Všehochuť</h3>
+        <div style="color:var(--text3);font-size:12px;margin-bottom:10px;line-height:1.4">Speciální událost se dvěma možnostmi. Např. „Bude zítra 25 stupňů?“ — Ano / Ne.</div>
+        <div class="field"><label>Otázka / událost</label><input type="text" id="evQuestion" placeholder="Bude zítra 25 stupňů?"></div>
+        <div class="field"><label>Datum uzamčení</label><input type="text" id="evDate" placeholder="25.5.2026 20:20"></div>
+        <div style="display:grid;grid-template-columns:1fr 110px;gap:8px">
+          <div class="field"><label>Možnost 1</label><input type="text" id="evOpt1" placeholder="Ano"></div>
+          <div class="field"><label>Kurz 1</label><input type="number" id="evOdd1" step="0.01" min="1.01" placeholder="1.94"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 110px;gap:8px">
+          <div class="field"><label>Možnost 2</label><input type="text" id="evOpt2" placeholder="Ne"></div>
+          <div class="field"><label>Kurz 2</label><input type="number" id="evOdd2" step="0.01" min="1.01" placeholder="1.69"></div>
+        </div>
+        <button class="btn-a btn-g" onclick="addBinaryEvent()" style="width:100%">Přidat událost</button>
+      </div>`;
+    }
+
     if((visibleAdminMatches||[]).length){
       html+='<div class="admin-box"><h3>Přehled zápasů</h3><div style="color:var(--text3);font-size:12px;margin-bottom:10px;line-height:1.4">Zobrazuji jen dnešní a následující zápasy. Duplicitní nebo chybně založený zápas smažeš křížkem. Smažou se i tipy navázané na daný zápas.</div>';
       (visibleAdminMatches||[]).forEach(m=>{
@@ -2361,8 +2442,8 @@ async function renderAdmin(){
         const statusColor=m.status==='done'?'var(--green)':isMatchLocked(m)?'var(--red)':'var(--gold)';
         html+=`<div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;display:flex;gap:10px;align-items:center">
           <div style="flex:1;min-width:0">
-            <div style="font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHTML(m.home)} – ${escapeHTML(m.away)}</div>
-            <div style="color:var(--text3);font-size:12px;margin-top:3px">${escapeHTML(m.match_date)} · <span style="color:${statusColor}">${statusLabel}</span></div>
+            <div style="font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHTML(eventTitle(m))}</div>
+            <div style="color:var(--text3);font-size:12px;margin-top:3px">${escapeHTML(m.match_date)}${isBinaryEvent(m)?' · událost':''} · <span style="color:${statusColor}">${statusLabel}</span></div>
           </div>
           <button type="button" title="Smazat zápas" onclick="deleteMatch('${m.id}')" style="width:32px;height:32px;border-radius:50%;border:1px solid rgba(248,81,73,.45);background:rgba(248,81,73,.12);color:var(--red);font-size:18px;font-weight:800;line-height:1;cursor:pointer">×</button>
         </div>`;
@@ -2370,7 +2451,7 @@ async function renderAdmin(){
       html+='</div>';
     }
     if(!pointsMode){
-      const oddsMatches=(visibleAdminMatches||[]).filter(m=>m.status!=='done');
+      const oddsMatches=(visibleAdminMatches||[]).filter(m=>m.status!=='done'&&!isBinaryEvent(m));
       if(oddsMatches.length){
         html+='<div class="admin-box"><h3>Upravit kurzy ručně</h3><div style="color:var(--text3);font-size:12px;margin-bottom:10px;line-height:1.4">Kurzy se ukládají přímo k zápasu. Pozor: při vyhodnocení se použijí aktuálně uložené kurzy.</div>';
         oddsMatches.forEach(m=>{
@@ -2395,22 +2476,51 @@ async function renderAdmin(){
         });
         html+='</div>';
       }
+      const eventOddsMatches=(visibleAdminMatches||[]).filter(m=>m.status!=='done'&&isBinaryEvent(m));
+      if(eventOddsMatches.length){
+        html+='<div class="admin-box"><h3>Upravit kurzy událostí</h3>';
+        eventOddsMatches.forEach(m=>{
+          html+=`<div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px">
+            <div style="font-weight:500;margin-bottom:8px;color:var(--text)">${escapeHTML(eventTitle(m))} <span style="color:var(--text3);font-size:12px">${escapeHTML(m.match_date)}</span></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:start">
+              <input type="number" id="eo_ev_h_${m.id}" step="0.01" min="1.01" value="${formatOddInput(m.odds_home)}" placeholder="${escapeHTML(m.home)}" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px;color:var(--text);font-size:13px;outline:none">
+              <input type="number" id="eo_ev_a_${m.id}" step="0.01" min="1.01" value="${formatOddInput(m.odds_away)}" placeholder="${escapeHTML(m.away)}" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px;color:var(--text);font-size:13px;outline:none">
+              <button class="btn-a btn-g" onclick="saveEventOdds('${m.id}')">Uložit kurzy</button>
+            </div>
+          </div>`;
+        });
+        html+='</div>';
+      }
     }
 
     const pend=(visibleAdminMatches||[]).filter(m=>m.status!=='done');
     if(pend.length){
       html+='<div class="admin-box"><h3>Zadat výsledky</h3>';
       pend.forEach(m=>{
-        html+=`<div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px">
-          <div style="font-weight:500;margin-bottom:8px;color:var(--text)">${m.home} – ${m.away} <span style="color:var(--text3);font-size:12px">${m.match_date}</span></div>
-          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-            <input type="number" id="rh_${m.id}" placeholder="0" min="0" style="width:56px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:14px;text-align:center;outline:none">
-            <span style="color:var(--text3)">:</span>
-            <input type="number" id="ra_${m.id}" placeholder="0" min="0" style="width:56px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:14px;text-align:center;outline:none">
-            <select id="rd_${m.id}" style="width:auto;margin:0;padding:6px"><option value="reg">Reg. čas</option><option value="ot">Prodloužení</option><option value="so">Nájezdy</option></select>
-            <button class="btn-a btn-g" onclick="saveResult('${m.id}')">Uložit</button>
-          </div>
-        </div>`;
+        if(isBinaryEvent(m)){
+          html+=`<div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px">
+            <div style="font-weight:500;margin-bottom:8px;color:var(--text)">${escapeHTML(eventTitle(m))} <span style="color:var(--text3);font-size:12px">${escapeHTML(m.match_date)}</span></div>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <select id="er_${m.id}" style="width:auto;margin:0;padding:6px">
+                <option value="">Vyber výsledek</option>
+                <option value="home">${escapeHTML(m.home)}</option>
+                <option value="away">${escapeHTML(m.away)}</option>
+              </select>
+              <button class="btn-a btn-g" onclick="saveEventResult('${m.id}')">Uložit</button>
+            </div>
+          </div>`;
+        }else{
+          html+=`<div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px">
+            <div style="font-weight:500;margin-bottom:8px;color:var(--text)">${escapeHTML(m.home)} – ${escapeHTML(m.away)} <span style="color:var(--text3);font-size:12px">${escapeHTML(m.match_date)}</span></div>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <input type="number" id="rh_${m.id}" placeholder="0" min="0" style="width:56px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:14px;text-align:center;outline:none">
+              <span style="color:var(--text3)">:</span>
+              <input type="number" id="ra_${m.id}" placeholder="0" min="0" style="width:56px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:14px;text-align:center;outline:none">
+              <select id="rd_${m.id}" style="width:auto;margin:0;padding:6px"><option value="reg">Reg. čas</option><option value="ot">Prodloužení</option><option value="so">Nájezdy</option></select>
+              <button class="btn-a btn-g" onclick="saveResult('${m.id}')">Uložit</button>
+            </div>
+          </div>`;
+        }
       });
       html+='</div>';
     }
@@ -2541,6 +2651,64 @@ async function deactivateComp(id){
   renderMatches();
   loadTicker();
 }
+
+
+async function addBinaryEvent(){
+  if(!currentComp||!isVsehochutCompetition(currentComp)){alert('Události jsou dostupné jen pro ligu Všehochuť.');return;}
+  const q=document.getElementById('evQuestion')?.value.trim();
+  const date=document.getElementById('evDate')?.value.trim();
+  const opt1=document.getElementById('evOpt1')?.value.trim();
+  const opt2=document.getElementById('evOpt2')?.value.trim();
+  const odd1=parseFloat(document.getElementById('evOdd1')?.value);
+  const odd2=parseFloat(document.getElementById('evOdd2')?.value);
+  if(!q||!date||!opt1||!opt2||!odd1||!odd2||odd1<=1||odd2<=1){alert('Vyplň otázku, datum, obě možnosti a oba kurzy.');return;}
+  const payload={
+    competition_id:currentComp.id,
+    event_type:'binary',
+    event_question:q,
+    home:opt1,
+    away:opt2,
+    match_date:date,
+    odds_home:odd1,
+    odds_draw:null,
+    odds_away:odd2,
+    regulation_odds:null,
+    status:'scheduled'
+  };
+  const{error}=await sb.from('matches').insert(payload);
+  if(error){alert('Událost se nepodařilo uložit: '+error.message);return;}
+  alert('Událost přidána.');
+  renderAdmin();
+  renderMatches();
+  loadTicker();
+}
+
+async function saveEventOdds(mid){
+  const h=parseFloat(document.getElementById('eo_ev_h_'+mid)?.value);
+  const a=parseFloat(document.getElementById('eo_ev_a_'+mid)?.value);
+  if(!h||!a||h<=1||a<=1){alert('Zadej platné kurzy.');return;}
+  const{error}=await sb.from('matches').update({odds_home:h,odds_away:a}).eq('id',mid);
+  if(error){alert('Kurzy se nepodařilo uložit: '+error.message);return;}
+  alert('Kurzy události uloženy.');
+  renderAdmin();
+  renderMatches();
+}
+
+async function saveEventResult(mid){
+  const val=document.getElementById('er_'+mid)?.value;
+  if(!val){alert('Vyber výsledek události.');return;}
+  const payload=val==='home'?{result_home:1,result_away:0,decision:'reg',status:'done'}:{result_home:0,result_away:1,decision:'reg',status:'done'};
+  const{error}=await sb.from('matches').update(payload).eq('id',mid);
+  if(error){alert('Výsledek události se nepodařilo uložit: '+error.message);return;}
+  await settleWinnings();
+  await updateCreditsDisplay();
+  alert('Událost vyhodnocena a tipy přepočítány.');
+  renderAdmin();
+  renderMatches();
+  renderLeaderboard();
+  loadTicker();
+}
+
 
 async function addMatch(){
   const home=document.getElementById('mHome').value.trim();
