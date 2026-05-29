@@ -644,6 +644,18 @@ select:focus{border-color:var(--blue)}
 @media(max-width:720px){.join-request-row{align-items:flex-start;flex-direction:column}.join-request-actions{width:100%;justify-content:stretch}.join-request-actions button{flex:1}}
 </style>
 
+
+<style id="support-toggle-admin-v1">
+body.support-hidden .support-box,
+body.support-hidden .join-support-box{display:none !important}
+.support-admin-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;border:1px solid rgba(139,148,158,.18);background:rgba(13,17,23,.30);border-radius:12px;padding:.85rem}
+.support-admin-state{color:var(--text2);font-size:14px;margin-bottom:.25rem}
+.support-admin-note{color:var(--text3);font-size:12px;line-height:1.35}
+#supportToggleBtn{min-width:170px;background:var(--green2)}
+#supportToggleBtn.support-off{background:var(--blue2)}
+@media(max-width:720px){.support-admin-row{flex-direction:column;align-items:stretch}#supportToggleBtn{width:100%}}
+</style>
+
 </head>
 <body>
 
@@ -767,6 +779,7 @@ const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 let currentUser=null,currentComp=null,allActiveComps=[],allMatches=[],allTips=[];
 let currentMembership=null,membershipTableAvailable=true;
 let currentJoinRequest=null,joinRequestsAvailable=true;
+let supportBoxEnabled=true,supportSettingsAvailable=true;
 let matchLockRefreshTimer=null;
 const pending={};
 
@@ -984,6 +997,7 @@ function isPrivateCompetition(comp=currentComp){
 }
 
 function renderJoinSupportQr(){
+  if(!supportBoxEnabled)return '';
   return `<div class="join-support-box">
     <div class="join-support-title">☕ Dobrovolný příspěvek</div>
     <div class="join-support-row">
@@ -2073,7 +2087,75 @@ async function renderMyTips(){
 }
 
 
+
+async function loadSupportBoxSetting(){
+  supportBoxEnabled=true;
+  supportSettingsAvailable=true;
+  try{
+    const{data,error}=await sb.from('site_settings').select('value').eq('key','support_box_enabled').maybeSingle();
+    if(error){
+      supportSettingsAvailable=false;
+      const local=localStorage.getItem('support_box_enabled');
+      supportBoxEnabled=local===null?true:local==='1';
+    }else if(data&&data.value!==undefined&&data.value!==null){
+      const v=String(data.value).toLowerCase();
+      supportBoxEnabled=(v==='true'||v==='1'||v==='yes'||v==='on');
+      localStorage.setItem('support_box_enabled',supportBoxEnabled?'1':'0');
+    }
+  }catch(e){
+    supportSettingsAvailable=false;
+    const local=localStorage.getItem('support_box_enabled');
+    supportBoxEnabled=local===null?true:local==='1';
+  }
+  document.body.classList.toggle('support-hidden',!supportBoxEnabled);
+  return supportBoxEnabled;
+}
+
+async function saveSupportBoxSetting(enabled){
+  supportBoxEnabled=!!enabled;
+  localStorage.setItem('support_box_enabled',supportBoxEnabled?'1':'0');
+  try{
+    const{error}=await sb.from('site_settings').upsert(
+      {key:'support_box_enabled',value:supportBoxEnabled?'true':'false',updated_at:new Date().toISOString()},
+      {onConflict:'key'}
+    );
+    if(error){
+      supportSettingsAvailable=false;
+      alert('Nastavení se uložilo jen v tomto prohlížeči. Pro veřejné skrytí všem hráčům musí existovat tabulka site_settings. Chyba: '+error.message);
+    }else{
+      supportSettingsAvailable=true;
+    }
+  }catch(e){
+    supportSettingsAvailable=false;
+    alert('Nastavení se uložilo jen v tomto prohlížeči. Chyba: '+(e.message||e));
+  }
+  document.body.classList.toggle('support-hidden',!supportBoxEnabled);
+}
+
+async function toggleSupportBox(){
+  await saveSupportBoxSetting(!supportBoxEnabled);
+  renderAdmin();
+  if(typeof renderLeaderboard==='function')renderLeaderboard();
+}
+
+function renderSupportAdminBox(){
+  const note=supportSettingsAvailable
+    ? 'Nastavení se uloží veřejně do Supabase a projeví se všem hráčům.'
+    : 'Pozor: tabulka site_settings není dostupná, nastavení je jen lokální.';
+  return `<div class="admin-box"><h3>Podpora stránky / QR</h3>
+    <div class="support-admin-row">
+      <div>
+        <div class="support-admin-state">${supportBoxEnabled?'Aktuálně: <strong style="color:var(--green)">zobrazeno hráčům</strong>':'Aktuálně: <strong style="color:var(--red)">skryto hráčům</strong>'}</div>
+        <div class="support-admin-note">${note}</div>
+      </div>
+      <button id="supportToggleBtn" class="btn-a ${supportBoxEnabled?'':'support-off'}" onclick="toggleSupportBox()">${supportBoxEnabled?'Skrýt podporu / QR':'Zobrazit podporu / QR'}</button>
+    </div>
+  </div>`;
+}
+
+
 function renderSupportBox(){
+  if(!supportBoxEnabled)return '';
   return `<div class="lb-extra-card support-box">
     <div class="lb-extra-title">☕ Podpoř tipovačku</div>
     <div class="support-content">
@@ -2091,6 +2173,7 @@ function renderSupportBox(){
 }
 
 async function renderLeaderboard(){
+  await loadSupportBoxSetting();
   await settleWinnings();
   await updateCreditsDisplay();
   const el=document.getElementById('leaderboardContent');
@@ -2191,6 +2274,7 @@ async function renderLeaderboard(){
 
 async function renderAdmin(){
   if(currentUser.username!==ADMIN_USERNAME)return;
+  await loadSupportBoxSetting();
   const el=document.getElementById('adminContent');
   el.innerHTML='<div class="loading"><div class="spin"></div><br>Načítám...</div>';
   const compsResp=await sb.from('competitions').select('*').order('created_at',{ascending:false});
@@ -2237,6 +2321,8 @@ async function renderAdmin(){
   }else{
     html+='<div class="admin-box"><h3>Žádosti o vstup</h3><div class="empty">Žádné čekající žádosti.</div></div>';
   }
+
+  html+=renderSupportAdminBox();
 
   const userOptions=(users||[]).map(u=>`<option value="${u.id}">${u.username} · ${(Number(u.credits)||0).toLocaleString('cs-CZ')} kr</option>`).join('');
   html+=`<div class="admin-box"><h3>Upravit kredity hráče</h3>
