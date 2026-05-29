@@ -673,6 +673,45 @@ body.support-hidden .join-support-box{display:none !important}
 }
 </style>
 
+
+<style id="default-competition-admin-v1">
+.default-comp-box{
+  display:flex;
+  align-items:flex-end;
+  gap:10px;
+  border:1px solid rgba(139,148,158,.18);
+  background:rgba(13,17,23,.30);
+  border-radius:12px;
+  padding:.85rem;
+}
+.default-comp-box button{
+  min-width:110px;
+}
+.default-comp-note{
+  color:var(--text3);
+  font-size:12px;
+  line-height:1.35;
+  margin-top:.55rem;
+}
+.default-comp-current{
+  color:var(--text2);
+  font-size:13px;
+  margin-top:.45rem;
+}
+.default-comp-current strong{
+  color:var(--gold);
+}
+@media(max-width:720px){
+  .default-comp-box{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .default-comp-box button{
+    width:100%;
+  }
+}
+</style>
+
 </head>
 <body>
 
@@ -797,6 +836,7 @@ let currentUser=null,currentComp=null,allActiveComps=[],allMatches=[],allTips=[]
 let currentMembership=null,membershipTableAvailable=true;
 let currentJoinRequest=null,joinRequestsAvailable=true;
 let supportBoxEnabled=true,supportSettingsAvailable=true;
+let defaultCompetitionId=null,defaultCompetitionSettingsAvailable=true;
 let matchLockRefreshTimer=null;
 const pending={};
 
@@ -875,12 +915,91 @@ async function updateCreditsDisplay(){
   el.textContent=currentUser.credits.toLocaleString('cs-CZ')+' kr';
 }
 
+
+async function loadDefaultCompetitionSetting(){
+  defaultCompetitionId=null;
+  defaultCompetitionSettingsAvailable=true;
+  try{
+    const{data,error}=await sb.from('site_settings').select('value').eq('key','default_competition_id').maybeSingle();
+    if(error){
+      defaultCompetitionSettingsAvailable=false;
+      defaultCompetitionId=localStorage.getItem('default_competition_id')||null;
+      console.warn('default competition setting:',error.message||error);
+      return defaultCompetitionId;
+    }
+    defaultCompetitionId=data?.value||null;
+    if(defaultCompetitionId)localStorage.setItem('default_competition_id',defaultCompetitionId);
+  }catch(e){
+    defaultCompetitionSettingsAvailable=false;
+    defaultCompetitionId=localStorage.getItem('default_competition_id')||null;
+    console.warn('default competition setting:',e);
+  }
+  return defaultCompetitionId;
+}
+
+async function saveDefaultCompetitionSetting(id){
+  if(!id){alert('Vyber soutěž.');return;}
+  defaultCompetitionId=id;
+  localStorage.setItem('default_competition_id',id);
+  try{
+    const{error}=await sb.from('site_settings').upsert(
+      {key:'default_competition_id',value:id,updated_at:new Date().toISOString()},
+      {onConflict:'key'}
+    );
+    if(error){
+      defaultCompetitionSettingsAvailable=false;
+      alert('Výchozí soutěž se uložila jen v tomto prohlížeči. Pro veřejné nastavení všem hráčům musí fungovat tabulka site_settings. Chyba: '+error.message);
+      return;
+    }
+    defaultCompetitionSettingsAvailable=true;
+    const comp=allActiveComps.find(c=>c.id===id);
+    alert('Výchozí soutěž po přihlášení nastavena: '+(comp?.name||'vybraná soutěž'));
+    renderAdmin();
+  }catch(e){
+    defaultCompetitionSettingsAvailable=false;
+    alert('Výchozí soutěž se uložila jen v tomto prohlížeči. Chyba: '+(e.message||e));
+  }
+}
+
+function renderDefaultCompetitionAdminBox(comps){
+  const active=(comps||[]).filter(c=>c.active);
+  const options=active.map(c=>`<option value="${c.id}" ${defaultCompetitionId===c.id?'selected':''}>${escapeHTML(c.name)} · ${escapeHTML(c.league||'')}</option>`).join('');
+  const current=active.find(c=>c.id===defaultCompetitionId);
+  const note=defaultCompetitionSettingsAvailable
+    ? 'Tahle soutěž se bude otevírat jako první po přihlášení / novém otevření webu. Hráč si ji potom může ručně přepnout.'
+    : 'Pozor: tabulka site_settings není dostupná, nastavení je jen lokální.';
+  return `<div class="admin-box"><h3>Výchozí soutěž po přihlášení</h3>
+    <div class="default-comp-box">
+      <div class="field" style="margin:0;flex:1">
+        <label>Otevřít jako první</label>
+        <select id="defaultCompetitionSelect">${options||'<option value="">Žádná aktivní soutěž</option>'}</select>
+      </div>
+      <button class="btn-a btn-g" onclick="saveDefaultCompetitionSetting(document.getElementById('defaultCompetitionSelect')?.value)">Uložit</button>
+    </div>
+    <div class="default-comp-note">${note}</div>
+    <div class="default-comp-current">Aktuálně: <strong>${current?escapeHTML(current.name):'nenastaveno'}</strong></div>
+  </div>`;
+}
+
+
 async function loadActiveComp(){
   const{data,error}=await sb.from('competitions').select('*').eq('active',true).order('created_at',{ascending:false});
   if(error){console.warn('competitions:',error);return;}
   allActiveComps=data||[];
+  const defaultId=await loadDefaultCompetitionSetting();
+  const sessionId=sessionStorage.getItem('tip_competition_id_session');
   const savedId=localStorage.getItem('tip_competition_id');
-  currentComp=allActiveComps.find(c=>c.id===savedId)||allActiveComps[0]||null;
+
+  // Po novém přihlášení / otevření webu má přednost adminem nastavená výchozí soutěž.
+  // Ruční přepnutí hráče platí jen v aktuální relaci.
+  currentComp=
+    allActiveComps.find(c=>c.id===sessionId)||
+    allActiveComps.find(c=>c.id===defaultId)||
+    allActiveComps.find(c=>c.id===savedId)||
+    allActiveComps[0]||
+    null;
+
+  if(currentComp)localStorage.setItem('tip_competition_id',currentComp.id);
   await refreshCurrentMembership();
   renderCompetitionSwitch();
 }
@@ -901,6 +1020,7 @@ async function switchCompetition(id){
   if(!selected)return;
   currentComp=selected;
   localStorage.setItem('tip_competition_id',id);
+  sessionStorage.setItem('tip_competition_id_session',id);
   await refreshCurrentMembership();
   renderCompetitionSwitch();
   renderRules();
