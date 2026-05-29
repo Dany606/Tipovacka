@@ -509,6 +509,75 @@ select:focus{border-color:var(--blue)}
 }
 </style>
 
+
+<style id="collapsible-leaderboard-boxes-v1">
+/* Rolovací boxy v žebříčku: Síň slávy + Moje statistika */
+.lb-extra-card.lb-collapsible{
+  padding: 0 !important;
+}
+.lb-extra-card.lb-collapsible .lb-extra-title{
+  display:flex !important;
+  align-items:center;
+  justify-content:space-between;
+  gap:.75rem;
+  margin:0 !important;
+  padding: .95rem 1.05rem !important;
+  cursor:pointer;
+  user-select:none;
+  border-bottom:1px solid transparent;
+}
+.lb-extra-card.lb-collapsible .lb-extra-title::after{
+  content:"⌄";
+  width:28px;
+  height:28px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:999px;
+  border:1px solid rgba(227,179,65,.32);
+  background:rgba(227,179,65,.08);
+  color:var(--gold);
+  font-size:18px;
+  line-height:1;
+  transition:transform .18s ease, background .18s ease;
+}
+.lb-extra-card.lb-collapsible.open .lb-extra-title{
+  border-bottom-color:rgba(139,148,158,.16);
+}
+.lb-extra-card.lb-collapsible.open .lb-extra-title::after{
+  transform:rotate(180deg);
+  background:rgba(227,179,65,.14);
+}
+.lb-extra-card.lb-collapsible .lb-collapse-body{
+  display:none;
+  padding: .85rem 1.05rem 1rem;
+}
+.lb-extra-card.lb-collapsible.open .lb-collapse-body{
+  display:block;
+}
+.lb-extra-card.lb-collapsible:not(.open){
+  min-height:0 !important;
+}
+.lb-extra-card.lb-collapsible:not(.open)::after{
+  content:"Klikni pro rozbalení";
+  display:block;
+  margin:-.45rem 1.05rem .8rem;
+  color:var(--text3);
+  font-size:12px;
+}
+@media(max-width:720px){
+  .lb-extra-card.lb-collapsible .lb-extra-title{
+    padding:.85rem !important;
+  }
+  .lb-extra-card.lb-collapsible .lb-collapse-body{
+    padding:.75rem .85rem .9rem;
+  }
+  .lb-extra-card.lb-collapsible:not(.open)::after{
+    margin:-.35rem .85rem .7rem;
+  }
+}
+</style>
+
 </head>
 <body>
 
@@ -2265,6 +2334,70 @@ function openSupportQr(){
 }
 function closeSupportQr(){const m=document.getElementById('supportQrModal');if(m)m.remove();}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSupportQr();});
+</script>
+
+
+<script id="collapsible-leaderboard-boxes-v1">
+(function(){
+  function makeCollapsible(card, key, defaultOpen){
+    if(!card || card.dataset.collapsibleReady === '1') return;
+    const title = card.querySelector('.lb-extra-title');
+    if(!title) return;
+
+    const nodes = Array.from(card.childNodes).filter(n => n !== title);
+    const body = document.createElement('div');
+    body.className = 'lb-collapse-body';
+    nodes.forEach(n => body.appendChild(n));
+    card.appendChild(body);
+
+    card.classList.add('lb-collapsible');
+    card.dataset.collapsibleReady = '1';
+
+    const saved = localStorage.getItem(key);
+    const open = saved === null ? !!defaultOpen : saved === '1';
+    card.classList.toggle('open', open);
+
+    title.addEventListener('click', function(){
+      const isOpen = card.classList.toggle('open');
+      localStorage.setItem(key, isOpen ? '1' : '0');
+    });
+  }
+
+  function initCollapsibleLeaderboardBoxes(){
+    const titles = Array.from(document.querySelectorAll('.lb-extra-card .lb-extra-title'));
+    titles.forEach(title => {
+      const text = (title.textContent || '').toLowerCase();
+      const card = title.closest('.lb-extra-card');
+      if(text.includes('síň slávy')){
+        makeCollapsible(card, 'tip_lb_hof_open', false);
+      }
+      if(text.includes('moje statistika')){
+        makeCollapsible(card, 'tip_lb_stats_open', false);
+      }
+    });
+  }
+
+  const oldRenderLeaderboard = window.renderLeaderboard;
+  if(typeof oldRenderLeaderboard === 'function'){
+    window.renderLeaderboard = async function(){
+      const result = await oldRenderLeaderboard.apply(this, arguments);
+      setTimeout(initCollapsibleLeaderboardBoxes, 0);
+      return result;
+    };
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){
+    setTimeout(initCollapsibleLeaderboardBoxes, 300);
+  });
+
+  const obs = new MutationObserver(function(){
+    initCollapsibleLeaderboardBoxes();
+  });
+  document.addEventListener('DOMContentLoaded', function(){
+    const target = document.getElementById('leaderboardContent') || document.body;
+    obs.observe(target, {childList:true, subtree:true});
+  });
+})();
 </script>
 
 </body>
