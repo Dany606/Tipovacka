@@ -1187,6 +1187,20 @@ body.support-hidden .join-support-box{display:none !important}
 }
 </style>
 
+
+<style id="admin-rules-updates-visibility-fix">
+.admin-rules-updates-box{
+  border-color: rgba(227,179,65,.40) !important;
+}
+.admin-rules-updates-box h3::before{
+  content:'📝 ';
+}
+.admin-rules-updates-box.admin-collapsible.open .admin-collapse-body,
+.admin-rules-updates-box .admin-collapse-body{
+  display:block;
+}
+</style>
+
 </head>
 <body>
 
@@ -1952,7 +1966,7 @@ async function deleteManualUpdate(id){
 
 function renderRulesUpdatesAdminBox(){
   const d=currentRulesOverride||defaultRulesDataForCompetition();
-  return `<div class="admin-box"><h3>Pravidla a aktualizace</h3>
+  return `<div class="admin-box admin-rules-updates-box"><h3>Pravidla a aktualizace</h3>
     <div class="admin-editor-grid">
       <div>
         <div class="tip-label">Pravidla pro aktuální soutěž</div>
@@ -2233,7 +2247,11 @@ function renderUpdates(items){
     return;
   }
   const rows=normalizeAllUpdates(items).slice(0,3);
-  if(!rows.length){box.style.display='none';return;}
+  if(!rows.length){
+    list.innerHTML='<div class="update-empty">Zatím žádné aktualizace.</div>';
+    box.style.display='block';
+    return;
+  }
   list.innerHTML=rows.map(u=>{
     const created=u.created_at||u.createdAt||new Date().toISOString();
     return `<div class="update-row"><div class="update-date">${formatUpdateDate(created)}</div><div class="update-text">${updateKindText(u)}</div></div>`;
@@ -3035,6 +3053,7 @@ function renderSupportBox(){
 
 async function renderLeaderboard(){
   await loadSupportBoxSetting();
+  await loadCurrentRulesOverride();
   await loadDefaultCompetitionSetting();
   await loadDefaultCompetitionSetting();
   await settleWinnings();
@@ -3187,6 +3206,7 @@ async function renderAdmin(){
 
   html+=renderSupportAdminBox();
   html+=renderDefaultCompetitionAdminBox(comps);
+  html+=renderRulesUpdatesAdminBox();
 
   const userOptions=(users||[]).map(u=>`<option value="${u.id}">${u.username} · ${(Number(u.credits)||0).toLocaleString('cs-CZ')} kr</option>`).join('');
   html+=`<div class="admin-box"><h3>Upravit kredity hráče</h3>
@@ -3780,7 +3800,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
   function categorizeBox(box){
     const t=adminTitleText(box);
     if(t.includes('žádosti')) return 'requests';
-    if(t.includes('nová soutěž')||t==='soutěže'||t.includes('výchozí')||t.includes('podpora')) return 'competitions';
+    if(t.includes('nová soutěž')||t==='soutěže'||t.includes('výchozí')||t.includes('podpora')||t.includes('pravidla')||t.includes('aktualizace')) return 'competitions';
     if(t.includes('přidat zápas')||t.includes('přidat událost')||t.includes('přehled zápasů')||t.includes('upravit kurzy')||t.includes('zadat výsledky')) return 'matches';
     if(t.includes('kredity')||t.includes('hráče')||t.includes('účast')||t.includes('přejmenovat')) return 'players';
     return 'competitions';
