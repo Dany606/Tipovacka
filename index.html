@@ -1514,7 +1514,6 @@ async function loadActiveComp(){
   if(error){console.warn('competitions:',error);return;}
   allActiveComps=data||[];
   const defaultId=await loadDefaultCompetitionSetting();
-  await loadCurrentRulesOverride();
   const sessionId=sessionStorage.getItem('tip_competition_id_session');
   const savedId=localStorage.getItem('tip_competition_id');
 
@@ -1529,6 +1528,7 @@ async function loadActiveComp(){
 
   if(currentComp)localStorage.setItem('tip_competition_id',currentComp.id);
   await refreshCurrentMembership();
+  await loadCurrentRulesOverride();
   renderCompetitionSwitch();
 }
 
@@ -2089,7 +2089,7 @@ function switchTab(name,btn){
   ['matches','mytips','leaderboard','admin'].forEach(t=>{const el=document.getElementById('tab-'+t);if(el)el.style.display=t===name?'block':'none';});
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  if(name==='matches')loadUpdates();
+  if(name==='matches'){loadCurrentRulesOverride().then(()=>renderRules());loadUpdates();}
   if(name==='mytips')renderMyTips();
   if(name==='leaderboard')renderLeaderboard();
   if(name==='admin')renderAdmin();
