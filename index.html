@@ -1238,6 +1238,16 @@ body.support-hidden .join-support-box{display:none !important}
 }
 </style>
 
+
+<style id="admin-switch-mytips-refund-fix-v1">
+#competitionSwitch,
+#topComp,
+.topbar,
+.nav{
+  pointer-events:auto !important;
+}
+</style>
+
 </head>
 <body>
 
@@ -1549,21 +1559,29 @@ async function switchCompetition(id){
   currentComp=selected;
   localStorage.setItem('tip_competition_id',id);
   sessionStorage.setItem('tip_competition_id_session',id);
-  await refreshCurrentMembership();
-  await loadCurrentRulesOverride();
+
+  const safe=async(fn,label)=>{
+    try{return await fn();}
+    catch(e){console.warn('switchCompetition '+label+':',e);}
+  };
+
+  await safe(()=>refreshCurrentMembership(),'membership');
+  await safe(()=>loadCurrentRulesOverride(),'rules');
   renderCompetitionSwitch();
-  renderRules();
-  await settleWinnings();
-  await updateCreditsDisplay();
-  await loadUpdates();
-  await renderMatches();
-  loadTicker();
+  await safe(()=>renderRules(),'renderRules');
+  await safe(()=>settleWinnings(),'settleWinnings');
+  await safe(()=>updateCreditsDisplay(),'credits');
+  await safe(()=>loadUpdates(),'updates');
+  await safe(()=>renderMatches(),'matches');
+  await safe(()=>loadTicker(),'ticker');
+
   const visibleAdmin=document.getElementById('tab-admin')?.style.display!=='none';
   const visibleTips=document.getElementById('tab-mytips')?.style.display!=='none';
   const visibleLb=document.getElementById('tab-leaderboard')?.style.display!=='none';
-  if(visibleAdmin)renderAdmin();
-  if(visibleTips)renderMyTips();
-  if(visibleLb)renderLeaderboard();
+
+  if(visibleAdmin)await safe(()=>renderAdmin(),'admin');
+  if(visibleTips)await safe(()=>renderMyTips(),'mytips');
+  if(visibleLb)await safe(()=>renderLeaderboard(),'leaderboard');
 }
 
 function startMatchLockRefresh(){
@@ -2982,124 +3000,52 @@ async function placeTip(mid){
 async function renderMyTips(){
   const el=document.getElementById('myTipsList');
   el.innerHTML='<div class="loading"><div class="spin"></div><br>Načítám...</div>';
-  if(!currentComp){el.innerHTML='<div class="empty">Žádná aktivní soutěž.</div>';return;}
-  if(!(await canAccessCurrentCompetition())){el.innerHTML=renderJoinCompetitionGate();return;}
-  const pointsMode=isPointsCompetition();
-  const{data:matches}=await sb.from('matches').select('*').eq('competition_id',currentComp.id).order('match_date',{ascending:false});
-  const{data:tips}=await sb.from('tips').select('*').eq('user_id',currentUser.id);
-  if(!tips||!tips.length){el.innerHTML='<div class="empty">Zatím žádné tipy. Jdi tipovat! 🏒</div>';return;}
-  let total=0;
-  let hasTipWithMatch=false;
-  let html='<div class="sec-title">Moje tipy</div><div class="lb-table">';
-  tips.forEach(t=>{
-    const m=(matches||[]).find(x=>x.id===t.match_id);if(!m)return;
-    hasTipWithMatch=true;
-    const res=evaluateTip(m,t);if(res>0)total+=res;
-    const isDone=m.status==='done';
-    const resultStr=isDone&&m.result_home!==null?`${m.result_home}:${m.result_away} (${m.decision==='reg'?'reg.':m.decision==='ot'?'prod.':'náj.'})`:null;
-    let tipLine='';
-    let resultBadge='';
-    if(pointsMode){
-      tipLine=`<span style="font-size:12px;color:var(--text2)">Tip: <strong style="color:var(--text)">${t.score_home}:${t.score_away}</strong></span><span style="font-size:11px;color:var(--text3)">přesný výsledek</span>`;
-      const exactHit=isExactScoreTip(t,m);
-      resultBadge=res===null?'<span class="b-wait">⏳ Čeká</span>':exactHit?'<span class="exact-celebration">🎉 Přesný výsledek! +5 bodů</span>':res>0?`<span class="b-won">+${Math.round(res)} bodů</span>`:'<span class="b-lost">0 bodů</span>';
-    }else{
-      const inf=t.outcome||t.decision;
-      const outLbl=inf==='home'?m.home:inf==='away'?m.away:inf==='draw'?'Remíza':'–';
-      const tipTypeLabel=t.decision&&!t.outcome?'vítěz vč. prod.':'výsl. zákl. doby';
-      tipLine=`<span style="font-size:12px;color:var(--text2)">Tip: <strong style="color:var(--text)">${outLbl}</strong></span><span style="font-size:11px;color:var(--text3)">${tipTypeLabel}</span><span style="font-size:12px;color:var(--text3)">· ${t.stake?.toLocaleString('cs-CZ')} kr</span>`;
-      resultBadge=res===null?'<span class="b-wait">⏳ Čeká</span>':res>0?`<span class="b-won">+${Math.round(res).toLocaleString('cs-CZ')} kr</span>`:'<span class="b-lost">✗ Prohra</span>';
-    }
-    html+=`<div class="tip-row">
-      <div style="flex:1;min-width:0">
-        <div style="font-weight:600;font-size:13px;color:var(--text);margin-bottom:3px">${m.home} – ${m.away}</div>
-        <div style="font-size:12px;color:var(--text3)">${m.match_date}</div>
-        <div style="display:flex;gap:8px;margin-top:5px;flex-wrap:wrap;align-items:center">
-          ${tipLine}
-          ${resultStr?`<span style="font-size:12px;font-weight:600;color:var(--text2)">Výsledek: <strong style="color:var(--text)">${resultStr}</strong></span>`:''}
-        </div>
-      </div>
-      <div style="margin-left:12px;white-space:nowrap">${resultBadge}</div>
-    </div>`;
-  });
-  html+='</div>';
-  if(!hasTipWithMatch){el.innerHTML='<div class="empty">Zatím žádné tipy k této soutěži.</div>';return;}
-  if(total>0){
-    const label=pointsMode?'Celkové body':'Celkové výhry';
-    const value=pointsMode?`+${Math.round(total)} bodů`:`+${Math.round(total).toLocaleString('cs-CZ')} kr`;
-    html=`<div style="background:rgba(63,185,80,.1);border:1px solid #238636;border-radius:var(--radius);padding:10px 14px;margin-bottom:10px;font-size:13px;color:var(--green)">💰 ${label}: <strong>${value}</strong></div>`+html;
-  }
-  el.innerHTML=html;
-}
-
-
-
-async function loadSupportBoxSetting(){
-  supportBoxEnabled=true;
-  supportSettingsAvailable=true;
   try{
-    const{data,error}=await sb.from('site_settings').select('value').eq('key','support_box_enabled').maybeSingle();
-    if(error){
-      supportSettingsAvailable=false;
-      const local=localStorage.getItem('support_box_enabled');
-      supportBoxEnabled=local===null?true:local==='1';
-    }else if(data&&data.value!==undefined&&data.value!==null){
-      const v=String(data.value).toLowerCase();
-      supportBoxEnabled=(v==='true'||v==='1'||v==='yes'||v==='on');
-      localStorage.setItem('support_box_enabled',supportBoxEnabled?'1':'0');
-    }
+    if(!currentComp){el.innerHTML='<div class="empty">Žádná aktivní soutěž.</div>';return;}
+    if(!(await canAccessCurrentCompetition())){el.innerHTML=renderJoinCompetitionGate();return;}
+    const pointsMode=isPointsCompetition();
+
+    const{data:matches,error:matchErr}=await sb.from('matches').select('*').eq('competition_id',currentComp.id).order('match_date',{ascending:false});
+    if(matchErr){el.innerHTML='<div class="empty">Moje tipy se nepodařilo načíst: '+escapeHTML(matchErr.message)+'</div>';return;}
+
+    const matchIds=(matches||[]).map(m=>m.id);
+    if(!matchIds.length){el.innerHTML='<div class="empty">V této soutěži zatím nejsou zápasy.</div>';return;}
+
+    const{data:tips,error:tipsErr}=await sb.from('tips').select('*').eq('user_id',currentUser.id).in('match_id',matchIds);
+    if(tipsErr){el.innerHTML='<div class="empty">Moje tipy se nepodařilo načíst: '+escapeHTML(tipsErr.message)+'</div>';return;}
+    if(!tips||!tips.length){el.innerHTML='<div class="empty">V této soutěži zatím nemáš žádné tipy. Jdi tipovat! 🏒</div>';return;}
+
+    let total=0;
+    let html='<div class="sec-title">Moje tipy</div><div class="lb-table">';
+    tips.forEach(t=>{
+      const m=(matches||[]).find(x=>x.id===t.match_id);if(!m)return;
+      const res=evaluateTip(m,t);if(res>0)total+=res;
+      const isDone=m.status==='done';
+      const resultStr=isDone&&m.result_home!==null?`${m.result_home}:${m.result_away} (${m.decision==='reg'?'reg.':m.decision==='ot'?'prod.':'náj.'})`:null;
+      let tipLine='';
+      let resultBadge='';
+      if(pointsMode){
+        tipLine=`<span style="font-size:12px;color:var(--text2)">Tip: <strong style="color:var(--text)">${t.score_home}:${t.score_away}</strong></span>`;
+        resultBadge=t.settled?`<span class="b-won">+${Math.round(Number(t.winnings)||0)} bodů</span>`:'<span class="b-wait">⏳ Čeká</span>';
+      }else{
+        const inf=t.outcome||t.decision;
+        const outLbl=inf==='home'?m.home:inf==='away'?m.away:inf==='draw'?'Remíza':'–';
+        const type=t.decision&&!t.outcome?'vítěz vč. prod./náj.':'výsledek základní doby';
+        tipLine=`<span style="font-size:12px;color:var(--text2)">Tip: <strong style="color:var(--text)">${escapeHTML(outLbl)}</strong> · ${Number(t.stake||0).toLocaleString('cs-CZ')} kr · ${type}</span>`;
+        resultBadge=t.settled?(Number(t.winnings||0)>0?`<span class="b-won">+${Math.round(Number(t.winnings)).toLocaleString('cs-CZ')} kr</span>`:'<span class="b-lost">✗ Prohra</span>'):'<span class="b-wait">⏳ Čeká</span>';
+      }
+      html+=`<div class="tip-history-row">
+        <div><strong>${escapeHTML(eventTitle?eventTitle(m):`${m.home} – ${m.away}`)}</strong><div style="color:var(--text3);font-size:12px">${escapeHTML(m.match_date||'')}</div>${tipLine}${resultStr?`<div style="font-size:12px;color:var(--text3)">Výsledek: ${resultStr}</div>`:''}</div>
+        ${resultBadge}
+      </div>`;
+    });
+    html+='</div>';
+    el.innerHTML=html;
   }catch(e){
-    supportSettingsAvailable=false;
-    const local=localStorage.getItem('support_box_enabled');
-    supportBoxEnabled=local===null?true:local==='1';
+    console.error('renderMyTips:',e);
+    el.innerHTML='<div class="empty">Moje tipy se nepodařilo načíst. Zkus obnovit stránku přes Ctrl + F5.</div>';
   }
-  document.body.classList.toggle('support-hidden',!supportBoxEnabled);
-  return supportBoxEnabled;
 }
-
-async function saveSupportBoxSetting(enabled){
-  supportBoxEnabled=!!enabled;
-  localStorage.setItem('support_box_enabled',supportBoxEnabled?'1':'0');
-  try{
-    const{error}=await sb.from('site_settings').upsert(
-      {key:'support_box_enabled',value:supportBoxEnabled?'true':'false',updated_at:new Date().toISOString()},
-      {onConflict:'key'}
-    );
-    if(error){
-      supportSettingsAvailable=false;
-      alert('Nastavení se uložilo jen v tomto prohlížeči. Pro veřejné skrytí všem hráčům musí existovat tabulka site_settings. Chyba: '+error.message);
-    }else{
-      supportSettingsAvailable=true;
-    }
-  }catch(e){
-    supportSettingsAvailable=false;
-    alert('Nastavení se uložilo jen v tomto prohlížeči. Chyba: '+(e.message||e));
-  }
-  document.body.classList.toggle('support-hidden',!supportBoxEnabled);
-}
-
-async function toggleSupportBox(){
-  await saveSupportBoxSetting(!supportBoxEnabled);
-  renderAdmin();
-  if(typeof renderLeaderboard==='function')renderLeaderboard();
-}
-
-function renderSupportAdminBox(){
-  const note=supportSettingsAvailable
-    ? 'Nastavení se uloží veřejně do Supabase a projeví se všem hráčům.'
-    : 'Pozor: tabulka site_settings není dostupná, nastavení je jen lokální.';
-  return `<div class="admin-box"><h3>Podpora stránky / QR</h3>
-    <div class="support-admin-row">
-      <div>
-        <div class="support-admin-state">${supportBoxEnabled?'Aktuálně: <strong style="color:var(--green)">zobrazeno hráčům</strong>':'Aktuálně: <strong style="color:var(--red)">skryto hráčům</strong>'}</div>
-        <div class="support-admin-note">${note}</div>
-      </div>
-      <button id="supportToggleBtn" class="btn-a ${supportBoxEnabled?'':'support-off'}" onclick="toggleSupportBox()">${supportBoxEnabled?'Skrýt podporu / QR':'Zobrazit podporu / QR'}</button>
-    </div>
-  </div>`;
-}
-
-
 function renderSupportBox(){
   if(!supportBoxEnabled)return '';
   return `<div class="lb-extra-card support-box">
@@ -3639,34 +3585,88 @@ async function saveMatchOdds(mid){
 }
 
 
+
+async function refundCreditStakesForDeletedMatch(match,tips){
+  if(!match||isPointsCompetition(currentComp))return {refunded:0,players:0};
+  const byUser={};
+  (tips||[]).forEach(t=>{
+    const stake=Number(t.stake||0);
+    if(stake>0&&t.user_id)byUser[t.user_id]=(byUser[t.user_id]||0)+stake;
+  });
+  let refunded=0,players=0;
+  for(const [uid,amount] of Object.entries(byUser)){
+    try{
+      const{data:user,error:loadErr}=await sb.from('users').select('credits').eq('id',uid).single();
+      if(loadErr||!user)continue;
+      const newCredits=Number(user.credits||0)+amount;
+      const{error:updateErr}=await sb.from('users').update({credits:newCredits}).eq('id',uid);
+      if(!updateErr){refunded+=amount;players++;}
+    }catch(e){
+      console.warn('refund stake failed:',uid,e);
+    }
+  }
+  return {refunded,players};
+}
+
 async function deleteMatch(mid){
   if(!currentUser||currentUser.username!==ADMIN_USERNAME){alert('Tahle akce je jen pro admina.');return;}
-  const match=(allMatches||[]).find(m=>m.id===mid);
-  const label=match?`${match.home} – ${match.away} (${match.match_date})`:'tento zápas';
-  const{data:tips,error:tipsErr}=await sb.from('tips').select('id').eq('match_id',mid);
+  let match=(allMatches||[]).find(m=>m.id===mid);
+  try{
+    const{data:freshMatch}=await sb.from('matches').select('*').eq('id',mid).single();
+    if(freshMatch)match=freshMatch;
+  }catch(e){}
+
+  const label=match?`${eventTitle?eventTitle(match):`${match.home} – ${match.away}`} (${match.match_date})`:'tento zápas';
+  const{data:tips,error:tipsErr}=await sb.from('tips').select('id,user_id,stake,settled,winnings').eq('match_id',mid);
   if(tipsErr){alert('Nepodařilo se ověřit tipy u zápasu: '+tipsErr.message);return;}
+
   const tipCount=(tips||[]).length;
-  let msg=`Opravdu chceš smazat zápas:
-${label}?`;
-  if(tipCount)msg+=`
+  const totalStake=(tips||[]).reduce((s,t)=>s+Number(t.stake||0),0);
+  const creditMode=!isPointsCompetition(currentComp);
+
+  let msg=`Opravdu chceš smazat zápas/událost?
+
+${label}`;
+
+  if(tipCount&&creditMode){
+    msg+=`
+
+Na zápas je ${tipCount} tipů. Hráčům se před smazáním vrátí vklady celkem ${totalStake.toLocaleString('cs-CZ')} kr.`;
+  }else if(tipCount){
+    msg+=`
 
 Pozor: smaže se i ${tipCount} tipů navázaných na tento zápas.`;
-  if(match&&match.status==='done')msg+='\n\nZápas už je ukončený. Smazání automaticky nevrátí dříve připsané kredity.';
+  }
+
   if(!confirm(msg))return;
+
+  let refundInfo={refunded:0,players:0};
+  if(tipCount&&creditMode){
+    refundInfo=await refundCreditStakesForDeletedMatch(match,tips||[]);
+  }
 
   if(tipCount){
     const{error:delTipsErr}=await sb.from('tips').delete().eq('match_id',mid);
     if(delTipsErr){alert('Tipy se nepodařilo smazat: '+delTipsErr.message);return;}
   }
+
   const{error}=await sb.from('matches').delete().eq('id',mid);
   if(error){alert('Zápas se nepodařilo smazat: '+error.message);return;}
 
   allMatches=(allMatches||[]).filter(m=>m.id!==mid);
   allTips=(allTips||[]).filter(t=>t.match_id!==mid);
-  alert('Zápas smazán.');
+
+  if(creditMode&&refundInfo.refunded>0){
+    alert(`Zápas smazán. Vráceno ${refundInfo.refunded.toLocaleString('cs-CZ')} kr pro ${refundInfo.players} hráčů.`);
+  }else{
+    alert('Zápas/událost smazána.');
+  }
+
+  await updateCreditsDisplay();
   await renderAdmin();
   await renderMatches();
   renderLeaderboard();
+  renderMyTips();
   loadTicker();
 }
 
