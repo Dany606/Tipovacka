@@ -2687,7 +2687,29 @@ async function renderMatches(){
   if(!(await canAccessCurrentCompetition())){el.innerHTML=renderJoinCompetitionGate();return;}
   const{data:matches}=await sb.from('matches').select('*').eq('competition_id',currentComp.id).order('match_date');
   if(!matches||!matches.length){el.innerHTML='<div class="empty">Zatím žádné zápasy.</div>';return;}
-  const visibleMatches=matches.filter(m=>!isMatchOlderThanDays(m,2));
+  const visibleMatches=matches
+    .filter(m=>!isMatchOlderThanDays(m,2))
+    .sort((a,b)=>{
+      const da=parseMatchDate(a.match_date)||new Date(8640000000000000);
+      const db=parseMatchDate(b.match_date)||new Date(8640000000000000);
+
+      // Pořadí na kartě Zápasy:
+      // 1) poslední odehrané / hotové zápasy,
+      // 2) aktuálně probíhající nebo už zamčené zápasy,
+      // 3) budoucí zápasy od nejbližšího dál.
+      const rank=(m)=>{
+        if(m.status==='done')return 0;
+        if(m.status==='live'||isMatchLocked(m))return 1;
+        return 2;
+      };
+
+      const ra=rank(a), rb=rank(b);
+      if(ra!==rb)return ra-rb;
+
+      // Hotové zápasy řadíme od nejnovějšího, budoucí a živé od nejbližšího.
+      if(ra===0)return db-da;
+      return da-db;
+    });
   if(!visibleMatches.length){el.innerHTML='<div class="empty">Žádné aktuální zápasy. Starší než 2 dny se automaticky skrývají.</div>';return;}
   allMatches=visibleMatches;
   const{data:tips}=await sb.from('tips').select('*').eq('user_id',currentUser.id);
