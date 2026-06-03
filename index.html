@@ -2059,7 +2059,7 @@ function updateKindText(u){
   // Ruční aktualizace zobrazuj vždy jako text zprávy.
   // Některé starší řádky nemusí mít type='manual', ale pokud mají message/text, je to zpráva.
   if(u.message||u.text)return escapeHTML(u.message||u.text||'');
-  const username=escapeHTML(u.username||u.player||'hráč');
+  const username=escapeHTML(u.username||u.player_name||u.player||'hráč');
   const amount=Number(u.amount||0).toLocaleString('cs-CZ');
   return `Hráč <strong>${username}</strong> si zakoupil <strong>${amount} kreditů</strong>.`;
 }
@@ -2074,7 +2074,7 @@ function normalizeAllUpdates(items){
         id:u.id||null,
         type,
         message:u.message||u.text||'',
-        username:u.username||u.player||u.name||'hráč',
+        username:u.username||u.player_name||u.player||u.name||'hráč',
         amount:Number(u.amount||u.credits||0)||0,
         user_id:u.user_id||u.userId||null,
         competition_id:u.competition_id||u.competitionId||null,
@@ -2094,18 +2094,34 @@ function normalizeAllUpdates(items){
 
 async function insertManualUpdate(){
   if(!currentComp){alert('Není vybraná soutěž.');return;}
+  if(!currentUser||currentUser.username!==ADMIN_USERNAME){alert('Tahle akce je jen pro admina.');return;}
+
   const msg=(document.getElementById('manualUpdateText')?.value||'').trim();
   if(!msg){alert('Napiš text aktualizace.');return;}
 
-  const item={type:'manual',message:msg,competition_id:currentComp.id,created_at:new Date().toISOString()};
+  const createdAt=new Date().toISOString();
+  const adminName=currentUser?.username||ADMIN_USERNAME||'Admin';
 
-  // Nejdřív zkusíme plný záznam pro aktuální soutěž.
-  // Kdyby v databázi chyběl některý sloupec, zkusíme jednodušší varianty.
+  // Důležité: tvoje tabulka updates má povinný sloupec player_name,
+  // proto ho musíme vyplnit i u ručních aktualizací.
+  const item={
+    type:'manual',
+    message:msg,
+    text:msg,
+    player_name:adminName,
+    username:adminName,
+    competition_id:currentComp.id,
+    created_at:createdAt
+  };
+
   const variants=[
     item,
-    {message:item.message,competition_id:item.competition_id,created_at:item.created_at},
-    {type:item.type,message:item.message,created_at:item.created_at},
-    {message:item.message,created_at:item.created_at}
+    {type:item.type,message:item.message,player_name:item.player_name,username:item.username,competition_id:item.competition_id,created_at:item.created_at},
+    {type:item.type,text:item.text,player_name:item.player_name,username:item.username,competition_id:item.competition_id,created_at:item.created_at},
+    {message:item.message,player_name:item.player_name,competition_id:item.competition_id,created_at:item.created_at},
+    {text:item.text,player_name:item.player_name,competition_id:item.competition_id,created_at:item.created_at},
+    {message:item.message,player_name:item.player_name,created_at:item.created_at},
+    {text:item.text,player_name:item.player_name,created_at:item.created_at}
   ];
 
   let saved=null,lastError=null;
@@ -2131,39 +2147,7 @@ async function insertManualUpdate(){
 
   await loadUpdates();
   await renderAdminManualUpdatesPreview();
-  alert('Aktualizace uložena a zobrazí se hráčům u této soutěže.');
-}
-async function deleteManualUpdate(id){
-  if(!id)return;
-  if(!confirm('Smazat tuto ruční aktualizaci?'))return;
-  const{error}=await sb.from('updates').delete().eq('id',id);
-  if(error){alert('Aktualizaci se nepodařilo smazat: '+error.message);return;}
-  await loadUpdates();
-  renderAdmin();
-}
-
-function renderRulesUpdatesAdminBox(){
-  const d=currentRulesOverride||defaultRulesDataForCompetition();
-  return `<div class="admin-box admin-rules-updates-box"><h3>Pravidla a aktualizace</h3>
-    <div class="admin-editor-grid">
-      <div>
-        <div class="tip-label">Pravidla pro aktuální soutěž</div>
-        <div class="field"><label>Řádky pravidel — každý řádek zvlášť</label><textarea id="adminRulesLines" rows="6">${escapeHTML((d.lines||[]).join('\n'))}</textarea></div>
-        <div class="field"><label>Poznámka pod pravidly</label><textarea id="adminRulesNote" rows="3">${escapeHTML(d.note||'')}</textarea></div>
-        <div class="admin-editor-actions">
-          <button class="btn-a btn-g" onclick="saveRulesFromAdmin()">Uložit pravidla</button>
-          <button class="btn-a" onclick="resetRulesFromAdmin()">Vrátit výchozí</button>
-        </div>
-      </div>
-      <div>
-        <div class="tip-label">Ruční aktualizace pro hráče</div>
-        <div class="field"><label>Text aktualizace</label><textarea id="manualUpdateText" rows="4" placeholder="Např. Dnes večer doplním výsledky po 22:00."></textarea></div>
-        <button class="btn-a btn-g" onclick="insertManualUpdate()" style="width:100%">Přidat aktualizaci</button>
-        <div class="admin-small-note">Zakoupení kreditů se do aktualizací zapisuje dál automaticky. Ruční řádky slouží jako zprávy pro hráče.</div>
-        <div id="adminManualUpdatesList"></div>
-      </div>
-    </div>
-  </div>`;
+  alert('Aktualizace uložena.');
 }
 
 async function renderAdminManualUpdatesPreview(){
