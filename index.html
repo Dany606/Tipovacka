@@ -83,7 +83,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .reward-text{font-size:13px;line-height:1.45;color:var(--text2)}
 .reward-text strong{color:var(--text);font-weight:700}
 .reward-text b{color:var(--gold)}
-.reward-img{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:8px;border:1px solid rgba(227,179,65,.45);box-shadow:0 0 18px rgba(227,179,65,.14);cursor:pointer;transition:transform .15s,border-color .15s}
+.reward-img{width:100%;aspect-ratio:16/10;object-fit:contain;border-radius:8px;border:1px solid rgba(227,179,65,.45);box-shadow:0 0 18px rgba(227,179,65,.14);cursor:pointer;transition:transform .15s,border-color .15s}
 .reward-img:hover{transform:scale(1.015);border-color:var(--gold)}
 .reward-click{font-size:10.5px;color:var(--text3);margin-top:5px;text-align:center}
 .reward-modal{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:9999;display:none;align-items:center;justify-content:center;padding:18px}
@@ -240,7 +240,7 @@ select:focus{border-color:var(--blue)}
 .reward-admin-state{font-size:14px;margin-bottom:8px;color:var(--text2)}
 .reward-admin-note{font-size:12px;line-height:1.45;color:var(--text3);margin-top:8px}
 .reward-admin-preview{border:1px solid rgba(139,148,158,.22);background:rgba(13,17,23,.45);border-radius:12px;padding:10px;text-align:center}
-.reward-admin-preview img{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:9px;border:1px solid rgba(227,179,65,.35);display:block;background:rgba(0,0,0,.25)}
+.reward-admin-preview img{width:100%;aspect-ratio:16/10;object-fit:contain;border-radius:9px;border:1px solid rgba(227,179,65,.35);display:block;background:rgba(0,0,0,.25)}
 .reward-admin-preview small{display:block;color:var(--text3);font-size:11px;margin-top:6px}
 .reward-admin-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
 .reward-admin-actions .btn-a{width:100%}
@@ -1307,6 +1307,48 @@ body.support-hidden .join-support-box{display:none !important}
     min-height:auto !important;
     padding:.35rem .25rem !important;
   }
+}
+</style>
+
+
+<style id="reward-image-contain-fix-v1">
+/* Náhled odměny vždy ukáže celou fotku zmenšenou, bez ořezu */
+.reward-img,
+.reward-modal-img,
+.reward-admin-preview img,
+.reward-preview img,
+#rewardImagePreview,
+img.reward-admin-img{
+  object-fit:contain !important;
+  object-position:center center !important;
+  background:rgba(0,0,0,.35) !important;
+}
+
+/* Admin náhled obrázku */
+.reward-admin-preview,
+.reward-preview,
+.reward-img-preview{
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  background:rgba(0,0,0,.30) !important;
+  overflow:hidden !important;
+}
+
+/* Hráčská karta odměny */
+.reward-img{
+  width:100% !important;
+  max-width:260px !important;
+  height:150px !important;
+  padding:4px !important;
+}
+
+/* Zvětšený modal také bez ořezu */
+.reward-modal-img{
+  max-width:min(92vw,980px) !important;
+  max-height:86vh !important;
+  width:auto !important;
+  height:auto !important;
 }
 </style>
 
