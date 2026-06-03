@@ -2056,7 +2056,9 @@ async function resetRulesFromAdmin(){
 }
 
 function updateKindText(u){
-  if((u.type||'')==='manual')return escapeHTML(u.message||u.text||'');
+  // Ruční aktualizace zobrazuj vždy jako text zprávy.
+  // Některé starší řádky nemusí mít type='manual', ale pokud mají message/text, je to zpráva.
+  if(u.message||u.text)return escapeHTML(u.message||u.text||'');
   const username=escapeHTML(u.username||u.player||'hráč');
   const amount=Number(u.amount||0).toLocaleString('cs-CZ');
   return `Hráč <strong>${username}</strong> si zakoupil <strong>${amount} kreditů</strong>.`;
@@ -2094,24 +2096,43 @@ async function insertManualUpdate(){
   if(!currentComp){alert('Není vybraná soutěž.');return;}
   const msg=(document.getElementById('manualUpdateText')?.value||'').trim();
   if(!msg){alert('Napiš text aktualizace.');return;}
+
   const item={type:'manual',message:msg,competition_id:currentComp.id,created_at:new Date().toISOString()};
+
+  // Nejdřív zkusíme plný záznam pro aktuální soutěž.
+  // Kdyby v databázi chyběl některý sloupec, zkusíme jednodušší varianty.
   const variants=[
     item,
+    {message:item.message,competition_id:item.competition_id,created_at:item.created_at},
     {type:item.type,message:item.message,created_at:item.created_at},
     {message:item.message,created_at:item.created_at}
   ];
-  let ok=false,lastError=null;
-  for(const payload of variants){
-    const{error}=await sb.from('updates').insert(payload);
-    if(!error){ok=true;break;}
-    lastError=error;
-  }
-  if(!ok){alert('Aktualizaci se nepodařilo uložit: '+(lastError?.message||''));return;}
-  document.getElementById('manualUpdateText').value='';
-  await loadUpdates();
-  renderAdmin();
-}
 
+  let saved=null,lastError=null;
+  for(const payload of variants){
+    try{
+      const{data,error}=await sb.from('updates').insert(payload).select('*').single();
+      if(!error){saved=data||payload;break;}
+      lastError=error;
+      console.warn('manual update insert variant failed:',error.message||error,payload);
+    }catch(e){
+      lastError=e;
+      console.warn('manual update insert variant crashed:',e,payload);
+    }
+  }
+
+  if(!saved){
+    alert('Aktualizaci se nepodařilo uložit: '+(lastError?.message||lastError||'neznámá chyba'));
+    return;
+  }
+
+  const textarea=document.getElementById('manualUpdateText');
+  if(textarea)textarea.value='';
+
+  await loadUpdates();
+  await renderAdminManualUpdatesPreview();
+  alert('Aktualizace uložena a zobrazí se hráčům u této soutěže.');
+}
 async function deleteManualUpdate(id){
   if(!id)return;
   if(!confirm('Smazat tuto ruční aktualizaci?'))return;
@@ -2149,11 +2170,13 @@ async function renderAdminManualUpdatesPreview(){
   const el=document.getElementById('adminManualUpdatesList');
   if(!el||!currentComp)return;
   try{
-    const{data}=await sb.from('updates').select('*').order('created_at',{ascending:false}).limit(20);
+    const{data,error}=await sb.from('updates').select('*').order('created_at',{ascending:false}).limit(30);
+    if(error){throw error;}
     const rows=normalizeAllUpdates(data||[]).filter(u=>u.type==='manual').slice(0,5);
-    if(!rows.length){el.innerHTML='<div class="update-empty" style="margin-top:8px">Žádné ruční aktualizace.</div>';return;}
+    if(!rows.length){el.innerHTML='<div class="update-empty" style="margin-top:8px">Žádné ruční aktualizace pro tuto soutěž.</div>';return;}
     el.innerHTML='<div class="admin-manual-list">'+rows.map(u=>`<div class="admin-manual-row"><span>${formatUpdateDate(u.created_at)} · ${escapeHTML(u.message)}</span>${u.id?`<button onclick="deleteManualUpdate('${u.id}')" title="Smazat">×</button>`:''}</div>`).join('')+'</div>';
   }catch(e){
+    console.warn('manual updates preview:',e);
     el.innerHTML='<div class="update-empty" style="margin-top:8px">Náhled aktualizací se nepodařilo načíst.</div>';
   }
 }
@@ -2602,42 +2625,52 @@ function renderUpdates(items){
   const box=document.getElementById('updatesBox');
   const list=document.getElementById('updatesList');
   if(!box||!list)return;
-  if(isPointsCompetition()){
-    box.style.display='none';
-    return;
-  }
-  const rows=normalizeAllUpdates(items).slice(0,3);
+
+  // Ruční aktualizace zobrazujeme u všech soutěží.
+  // Automatické nákupy kreditů zobrazujeme jen u kreditových soutěží.
+  const rows=normalizeAllUpdates(items)
+    .filter(u=>u.type==='manual' || !isPointsCompetition())
+    .slice(0,3);
+
   if(!rows.length){
+    // U bodových soutěží box bez ručních zpráv nechceme zbytečně ukazovat.
+    if(isPointsCompetition()){
+      box.style.display='none';
+      return;
+    }
     list.innerHTML='<div class="update-empty">Zatím žádné aktualizace.</div>';
     box.style.display='block';
     return;
   }
+
   list.innerHTML=rows.map(u=>{
     const created=u.created_at||u.createdAt||new Date().toISOString();
     return `<div class="update-row"><div class="update-date">${formatUpdateDate(created)}</div><div class="update-text">${updateKindText(u)}</div></div>`;
   }).join('');
   box.style.display='block';
 }
-
 async function loadUpdates(){
   const box=document.getElementById('updatesBox');
-  if(isPointsCompetition()){
-    if(box)box.style.display='none';
-    return;
-  }
 
-  let rows=localCreditUpdates();
+  // U bodových soutěží neschovávej aktualizace automaticky.
+  // Jinak by ruční zprávy z adminu nebyly vidět například u Mistrovství světa.
+  let rows=isPointsCompetition()?[]:localCreditUpdates();
+
   try{
-    let q=sb.from('updates').select('*').order('created_at',{ascending:false}).limit(20);
-    const{data,error}=await q;
+    const{data,error}=await sb
+      .from('updates')
+      .select('*')
+      .order('created_at',{ascending:false})
+      .limit(30);
+
     if(!error&&data)rows=normalizeAllUpdates([...(data||[]),...rows]);
     else if(error)console.warn('updates load:',error);
   }catch(e){
     console.warn('updates load:',e);
   }
+
   renderUpdates(rows);
 }
-
 async function insertCreditUpdateToSupabase(item){
   const variants=[
     {type:item.type,username:item.username,amount:item.amount,user_id:item.user_id,competition_id:item.competition_id,created_at:item.created_at},
