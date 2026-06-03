@@ -1253,6 +1253,63 @@ body.support-hidden .join-support-box{display:none !important}
 }
 </style>
 
+
+<style id="reward-text-center-polish-v1">
+/* Hezčí zarovnání textu v boxu odměny */
+.reward-content{
+  align-items:center !important;
+}
+.reward-text{
+  text-align:center !important;
+  line-height:1.85 !important;
+  font-size:14px !important;
+  padding:.45rem 1rem !important;
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:center !important;
+  justify-content:center !important;
+  min-height:118px !important;
+}
+.reward-text .reward-line{
+  display:block;
+  width:100%;
+}
+.reward-text .reward-line-main{
+  color:var(--text);
+  font-weight:800;
+  font-size:15px;
+  margin-bottom:.35rem;
+}
+.reward-text .reward-line-normal{
+  color:var(--text2);
+  margin:.08rem 0;
+}
+.reward-text .reward-line-gold{
+  color:var(--gold);
+  font-weight:900;
+  margin-top:.35rem;
+}
+.reward-text strong{
+  display:block !important;
+  color:var(--text) !important;
+  font-weight:800 !important;
+  font-size:15px !important;
+  margin-bottom:.35rem !important;
+}
+.reward-text b{
+  display:block !important;
+  color:var(--gold) !important;
+  font-weight:900 !important;
+  margin-top:.35rem !important;
+}
+@media(max-width:720px){
+  .reward-text{
+    min-height:auto !important;
+    padding:.35rem .25rem !important;
+  }
+}
+</style>
+
 </head>
 <body>
 
@@ -2150,13 +2207,13 @@ async function saveRewardSetting(setting){
 
 function renderRewardDescription(desc){
   const lines=String(desc||'').split('\n').map(x=>x.trim()).filter(Boolean);
-  if(!lines.length)return '<strong>Vítěz soutěže získá připravenou odměnu.</strong>';
+  if(!lines.length)return '<span class="reward-line reward-line-main">Vítěz soutěže získá připravenou odměnu.</span>';
   return lines.map((line,i)=>{
     const safe=escapeHTML(line);
-    if(i===0)return `<strong>${safe}</strong>`;
-    if(i===lines.length-1)return `<b>${safe}</b>`;
-    return safe;
-  }).join('<br>');
+    if(i===0)return `<span class="reward-line reward-line-main">${safe}</span>`;
+    if(i===lines.length-1)return `<span class="reward-line reward-line-gold">${safe}</span>`;
+    return `<span class="reward-line reward-line-normal">${safe}</span>`;
+  }).join('');
 }
 
 function renderRewardBox(){
