@@ -2050,11 +2050,9 @@ async function resetRulesFromAdmin(){
 }
 
 function updateKindText(u){
-  // Ruční aktualizace zobrazuj vždy jako text zprávy.
-  // Některé starší řádky nemusí mít type='manual', ale pokud mají message/text, je to zpráva.
-  if(u.message||u.text)return escapeHTML(u.message||u.text||'');
+  if(u.message||u.text||u.body)return escapeHTML(u.message||u.text||u.body||'');
   const username=escapeHTML(u.username||u.player_name||u.player||'hráč');
-  const amount=Number(u.amount||0).toLocaleString('cs-CZ');
+  const amount=Number(u.amount||u.credits||0).toLocaleString('cs-CZ');
   return `Hráč <strong>${username}</strong> si zakoupil <strong>${amount} kreditů</strong>.`;
 }
 
@@ -2063,19 +2061,24 @@ function normalizeAllUpdates(items){
   return (items||[])
     .filter(Boolean)
     .map(u=>{
-      const type=u.type||((u.message||u.text)?'manual':'credits_purchase');
+      const msg=u.message||u.text||u.body||'';
+      const hasMessage=!!msg;
+      const type=u.type||u.kind||(hasMessage?'manual':'credits_purchase');
       return {
         id:u.id||null,
         type,
-        message:u.message||u.text||'',
-        username:u.username||u.player_name||u.player||u.name||'hráč',
+        message:msg,
+        text:msg,
+        username:u.username||u.player_name||u.player||u.name||'Admin',
+        player_name:u.player_name||u.username||u.player||u.name||'Admin',
         amount:Number(u.amount||u.credits||0)||0,
+        credits:Number(u.credits||u.amount||0)||0,
         user_id:u.user_id||u.userId||null,
         competition_id:u.competition_id||u.competitionId||null,
         created_at:u.created_at||u.createdAt||new Date().toISOString()
       };
     })
-    .filter(u=>u.type==='manual' ? !!u.message : u.amount>0)
+    .filter(u=>u.message || u.amount>0)
     .filter(u=>!u.competition_id || !currentComp || u.competition_id===currentComp.id)
     .sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))
     .filter(u=>{
@@ -2088,18 +2091,47 @@ function normalizeAllUpdates(items){
 
 async function insertManualUpdate(){
   if(!currentComp){alert('Není vybraná soutěž.');return;}
+  if(!currentUser||currentUser.username!==ADMIN_USERNAME){alert('Tahle akce je jen pro admina.');return;}
+
   const msg=(document.getElementById('manualUpdateText')?.value||'').trim();
   if(!msg){alert('Napiš text aktualizace.');return;}
 
-  const item={type:'manual',message:msg,competition_id:currentComp.id,created_at:new Date().toISOString()};
+  const createdAt=new Date().toISOString();
+  const adminName=currentUser?.username||ADMIN_USERNAME||'Admin';
+  const adminId=currentUser?.id||null;
 
-  // Nejdřív zkusíme plný záznam pro aktuální soutěž.
-  // Kdyby v databázi chyběl některý sloupec, zkusíme jednodušší varianty.
+  // Univerzální payload pro starší tabulku updates:
+  // ruční zpráva nemá částku, proto amount=0;
+  // některé starší verze tabulky chtějí player_name NOT NULL;
+  // některé čtení zase používá username / message / text.
+  const base={
+    type:'manual',
+    kind:'manual',
+    message:msg,
+    text:msg,
+    body:msg,
+    title:'Aktualizace',
+    player_name:adminName,
+    username:adminName,
+    player:adminName,
+    amount:0,
+    credits:0,
+    user_id:adminId,
+    competition_id:currentComp.id,
+    created_at:createdAt,
+    updated_at:createdAt
+  };
+
   const variants=[
-    item,
-    {message:item.message,competition_id:item.competition_id,created_at:item.created_at},
-    {type:item.type,message:item.message,created_at:item.created_at},
-    {message:item.message,created_at:item.created_at}
+    base,
+    {type:base.type,message:base.message,text:base.text,player_name:base.player_name,username:base.username,amount:0,credits:0,user_id:base.user_id,competition_id:base.competition_id,created_at:base.created_at,updated_at:base.updated_at},
+    {type:base.type,message:base.message,player_name:base.player_name,username:base.username,amount:0,user_id:base.user_id,competition_id:base.competition_id,created_at:base.created_at},
+    {type:base.type,text:base.text,player_name:base.player_name,username:base.username,amount:0,user_id:base.user_id,competition_id:base.competition_id,created_at:base.created_at},
+    {message:base.message,text:base.text,player_name:base.player_name,username:base.username,amount:0,competition_id:base.competition_id,created_at:base.created_at},
+    {message:base.message,player_name:base.player_name,amount:0,competition_id:base.competition_id,created_at:base.created_at},
+    {text:base.text,player_name:base.player_name,amount:0,competition_id:base.competition_id,created_at:base.created_at},
+    {message:base.message,player_name:base.player_name,amount:0,created_at:base.created_at},
+    {text:base.text,player_name:base.player_name,amount:0,created_at:base.created_at}
   ];
 
   let saved=null,lastError=null;
@@ -2125,8 +2157,9 @@ async function insertManualUpdate(){
 
   await loadUpdates();
   await renderAdminManualUpdatesPreview();
-  alert('Aktualizace uložena a zobrazí se hráčům u této soutěže.');
+  alert('Aktualizace uložena.');
 }
+
 async function deleteManualUpdate(id){
   if(!id)return;
   if(!confirm('Smazat tuto ruční aktualizaci?'))return;
@@ -2666,10 +2699,33 @@ async function loadUpdates(){
   renderUpdates(rows);
 }
 async function insertCreditUpdateToSupabase(item){
+  const amountText=Number(item.amount||0).toLocaleString('cs-CZ');
+  const playerName=item.username||item.player_name||'hráč';
+  const msg=`Hráč ${playerName} si zakoupil ${amountText} kreditů.`;
+
+  const base={
+    type:'credits_purchase',
+    kind:'credits_purchase',
+    message:msg,
+    text:msg,
+    body:msg,
+    player_name:playerName,
+    username:playerName,
+    player:playerName,
+    amount:Number(item.amount||0)||0,
+    credits:Number(item.amount||0)||0,
+    user_id:item.user_id||null,
+    competition_id:item.competition_id||currentComp?.id||null,
+    created_at:item.created_at||new Date().toISOString(),
+    updated_at:new Date().toISOString()
+  };
+
   const variants=[
-    {type:item.type,username:item.username,amount:item.amount,user_id:item.user_id,competition_id:item.competition_id,created_at:item.created_at},
-    {type:item.type,username:item.username,amount:item.amount,created_at:item.created_at},
-    {username:item.username,amount:item.amount,created_at:item.created_at}
+    base,
+    {type:base.type,message:base.message,text:base.text,player_name:base.player_name,username:base.username,amount:base.amount,credits:base.credits,user_id:base.user_id,competition_id:base.competition_id,created_at:base.created_at},
+    {type:base.type,message:base.message,player_name:base.player_name,username:base.username,amount:base.amount,user_id:base.user_id,competition_id:base.competition_id,created_at:base.created_at},
+    {message:base.message,player_name:base.player_name,amount:base.amount,competition_id:base.competition_id,created_at:base.created_at},
+    {message:base.message,player_name:base.player_name,amount:base.amount,created_at:base.created_at}
   ];
 
   let lastError=null;
