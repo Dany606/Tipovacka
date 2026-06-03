@@ -1311,44 +1311,125 @@ body.support-hidden .join-support-box{display:none !important}
 </style>
 
 
-<style id="reward-image-contain-fix-v1">
-/* Náhled odměny vždy ukáže celou fotku zmenšenou, bez ořezu */
+
+<style id="reward-image-auto-fit-v2">
+/* Obrázek odměny: automaticky hezky pro fotky na výšku i na šířku */
+.reward-image-wrap,
+.reward-admin-preview,
+.reward-preview,
+.reward-img-preview{
+  position:relative !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  overflow:hidden !important;
+  border-radius:12px !important;
+  background:#05070a !important;
+}
+
+/* Rozmazané pozadí z té samé fotky vyplní prázdná místa */
+.reward-image-wrap::before,
+.reward-admin-preview::before,
+.reward-preview::before,
+.reward-img-preview::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background-image:var(--reward-bg);
+  background-size:cover;
+  background-position:center;
+  filter:blur(16px);
+  transform:scale(1.16);
+  opacity:.42;
+  z-index:0;
+}
+
+.reward-image-wrap::after,
+.reward-admin-preview::after,
+.reward-preview::after,
+.reward-img-preview::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:linear-gradient(135deg,rgba(0,0,0,.18),rgba(0,0,0,.34));
+  z-index:1;
+}
+
 .reward-img,
 .reward-modal-img,
 .reward-admin-preview img,
 .reward-preview img,
 #rewardImagePreview,
 img.reward-admin-img{
+  position:relative !important;
+  z-index:2 !important;
   object-fit:contain !important;
   object-position:center center !important;
-  background:rgba(0,0,0,.35) !important;
+  background:transparent !important;
 }
 
-/* Admin náhled obrázku */
-.reward-admin-preview,
-.reward-preview,
-.reward-img-preview{
-  display:flex !important;
-  align-items:center !important;
-  justify-content:center !important;
-  background:rgba(0,0,0,.30) !important;
-  overflow:hidden !important;
-}
-
-/* Hráčská karta odměny */
+/* Hráčská karta: obrázek nikdy neořezat, ale pozadí vyplní rámeček */
 .reward-img{
   width:100% !important;
-  max-width:260px !important;
-  height:150px !important;
-  padding:4px !important;
+  height:170px !important;
+  max-width:300px !important;
+  padding:6px !important;
+  border-radius:10px !important;
 }
 
-/* Zvětšený modal také bez ořezu */
+/* Fotka na výšku bude větší a nebude působit jako malý proužek */
+.reward-img.reward-portrait,
+.reward-admin-preview img.reward-portrait,
+.reward-preview img.reward-portrait,
+#rewardImagePreview.reward-portrait{
+  width:auto !important;
+  max-width:78% !important;
+  height:180px !important;
+  max-height:180px !important;
+}
+
+/* Fotka na šířku vyplní šířku rámečku */
+.reward-img.reward-landscape,
+.reward-admin-preview img.reward-landscape,
+.reward-preview img.reward-landscape,
+#rewardImagePreview.reward-landscape{
+  width:100% !important;
+  height:160px !important;
+  max-width:100% !important;
+}
+
+/* Čtvercové fotky */
+.reward-img.reward-square,
+.reward-admin-preview img.reward-square,
+.reward-preview img.reward-square,
+#rewardImagePreview.reward-square{
+  width:auto !important;
+  max-width:88% !important;
+  height:170px !important;
+}
+
+/* Admin náhled */
+.reward-admin-preview img,
+.reward-preview img,
+#rewardImagePreview{
+  max-height:190px !important;
+  padding:6px !important;
+  border-radius:10px !important;
+}
+
+/* Zvětšený modal ukazuje celou fotku bez ořezu */
 .reward-modal-img{
   max-width:min(92vw,980px) !important;
   max-height:86vh !important;
   width:auto !important;
   height:auto !important;
+  object-fit:contain !important;
+}
+
+/* Na mobilu menší výška */
+@media(max-width:720px){
+  .reward-img{height:145px !important}
+  .reward-img.reward-portrait{height:155px !important;max-height:155px !important}
 }
 </style>
 
@@ -4786,6 +4867,46 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
     const r=root()||document.body;
     new MutationObserver(markAdminReady).observe(r,{childList:true,subtree:true});
   });
+})();
+</script>
+
+
+<script id="reward-image-auto-fit-v2">
+(function(){
+  function prepareRewardImage(img){
+    if(!img || img.dataset.rewardAutoFitDone==='1')return;
+    img.dataset.rewardAutoFitDone='1';
+
+    function apply(){
+      const w=img.naturalWidth||0;
+      const h=img.naturalHeight||0;
+      img.classList.remove('reward-portrait','reward-landscape','reward-square');
+      if(w&&h){
+        const ratio=w/h;
+        if(ratio<0.82)img.classList.add('reward-portrait');
+        else if(ratio>1.18)img.classList.add('reward-landscape');
+        else img.classList.add('reward-square');
+      }
+
+      const src=img.currentSrc||img.src;
+      const parent=img.parentElement;
+      if(parent&&src){
+        parent.classList.add('reward-image-wrap');
+        parent.style.setProperty('--reward-bg', `url("${src}")`);
+      }
+    }
+
+    if(img.complete)apply();
+    else img.addEventListener('load',apply,{once:true});
+  }
+
+  function scanRewardImages(){
+    document.querySelectorAll('.reward-img,.reward-admin-preview img,.reward-preview img,#rewardImagePreview,img.reward-admin-img').forEach(prepareRewardImage);
+  }
+
+  document.addEventListener('DOMContentLoaded',scanRewardImages);
+  new MutationObserver(scanRewardImages).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['src']});
+  window.addEventListener('load',scanRewardImages);
 })();
 </script>
 
