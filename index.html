@@ -1217,16 +1217,14 @@ body.support-hidden .join-support-box{display:none !important}
 </style>
 
 
+
 <style id="admin-no-old-flicker-final-v1">
-/* Dokud admin dashboard není hotový, nesmí probliknout starý seznam admin-boxů. */
+/* Bezpečná stabilizace adminu: neponechá admin viset na "Načítám admin panel..." */
 #tab-admin #adminContent:not(.admin-dashboard-ready) > .admin-box{
   display:none !important;
 }
-#tab-admin #adminContent:not(.admin-dashboard-ready) > .loading{
-  display:none !important;
-}
 #tab-admin #adminContent:not(.admin-dashboard-ready)::before{
-  content:"Načítám admin panel…";
+  content:"Načítám admin panel...";
   display:block;
   width:min(980px,calc(100% - 24px));
   margin:1rem auto;
@@ -1242,16 +1240,12 @@ body.support-hidden .join-support-box{display:none !important}
 #tab-admin #adminContent.admin-dashboard-ready::before{
   display:none !important;
 }
-#tab-admin #adminContent.admin-dashboard-ready .admin-tab-panel > .admin-box,
-#tab-admin #adminContent.admin-dashboard-ready .admin-dashboard,
-#tab-admin #adminContent.admin-dashboard-ready .admin-context-banner,
-#tab-admin #adminContent.admin-dashboard-ready .admin-mini-tabs{
-  display:grid;
-}
+#tab-admin #adminContent.admin-dashboard-ready > .admin-box,
 #tab-admin #adminContent.admin-dashboard-ready .admin-tab-panel > .admin-box{
   display:block;
 }
 </style>
+
 
 
 <style id="reward-text-center-polish-v1">
@@ -2094,34 +2088,18 @@ function normalizeAllUpdates(items){
 
 async function insertManualUpdate(){
   if(!currentComp){alert('Není vybraná soutěž.');return;}
-  if(!currentUser||currentUser.username!==ADMIN_USERNAME){alert('Tahle akce je jen pro admina.');return;}
-
   const msg=(document.getElementById('manualUpdateText')?.value||'').trim();
   if(!msg){alert('Napiš text aktualizace.');return;}
 
-  const createdAt=new Date().toISOString();
-  const adminName=currentUser?.username||ADMIN_USERNAME||'Admin';
+  const item={type:'manual',message:msg,competition_id:currentComp.id,created_at:new Date().toISOString()};
 
-  // Důležité: tvoje tabulka updates má povinný sloupec player_name,
-  // proto ho musíme vyplnit i u ručních aktualizací.
-  const item={
-    type:'manual',
-    message:msg,
-    text:msg,
-    player_name:adminName,
-    username:adminName,
-    competition_id:currentComp.id,
-    created_at:createdAt
-  };
-
+  // Nejdřív zkusíme plný záznam pro aktuální soutěž.
+  // Kdyby v databázi chyběl některý sloupec, zkusíme jednodušší varianty.
   const variants=[
     item,
-    {type:item.type,message:item.message,player_name:item.player_name,username:item.username,competition_id:item.competition_id,created_at:item.created_at},
-    {type:item.type,text:item.text,player_name:item.player_name,username:item.username,competition_id:item.competition_id,created_at:item.created_at},
-    {message:item.message,player_name:item.player_name,competition_id:item.competition_id,created_at:item.created_at},
-    {text:item.text,player_name:item.player_name,competition_id:item.competition_id,created_at:item.created_at},
-    {message:item.message,player_name:item.player_name,created_at:item.created_at},
-    {text:item.text,player_name:item.player_name,created_at:item.created_at}
+    {message:item.message,competition_id:item.competition_id,created_at:item.created_at},
+    {type:item.type,message:item.message,created_at:item.created_at},
+    {message:item.message,created_at:item.created_at}
   ];
 
   let saved=null,lastError=null;
@@ -2147,7 +2125,39 @@ async function insertManualUpdate(){
 
   await loadUpdates();
   await renderAdminManualUpdatesPreview();
-  alert('Aktualizace uložena.');
+  alert('Aktualizace uložena a zobrazí se hráčům u této soutěže.');
+}
+async function deleteManualUpdate(id){
+  if(!id)return;
+  if(!confirm('Smazat tuto ruční aktualizaci?'))return;
+  const{error}=await sb.from('updates').delete().eq('id',id);
+  if(error){alert('Aktualizaci se nepodařilo smazat: '+error.message);return;}
+  await loadUpdates();
+  renderAdmin();
+}
+
+function renderRulesUpdatesAdminBox(){
+  const d=currentRulesOverride||defaultRulesDataForCompetition();
+  return `<div class="admin-box admin-rules-updates-box"><h3>Pravidla a aktualizace</h3>
+    <div class="admin-editor-grid">
+      <div>
+        <div class="tip-label">Pravidla pro aktuální soutěž</div>
+        <div class="field"><label>Řádky pravidel — každý řádek zvlášť</label><textarea id="adminRulesLines" rows="6">${escapeHTML((d.lines||[]).join('\n'))}</textarea></div>
+        <div class="field"><label>Poznámka pod pravidly</label><textarea id="adminRulesNote" rows="3">${escapeHTML(d.note||'')}</textarea></div>
+        <div class="admin-editor-actions">
+          <button class="btn-a btn-g" onclick="saveRulesFromAdmin()">Uložit pravidla</button>
+          <button class="btn-a" onclick="resetRulesFromAdmin()">Vrátit výchozí</button>
+        </div>
+      </div>
+      <div>
+        <div class="tip-label">Ruční aktualizace pro hráče</div>
+        <div class="field"><label>Text aktualizace</label><textarea id="manualUpdateText" rows="4" placeholder="Např. Dnes večer doplním výsledky po 22:00."></textarea></div>
+        <button class="btn-a btn-g" onclick="insertManualUpdate()" style="width:100%">Přidat aktualizaci</button>
+        <div class="admin-small-note">Zakoupení kreditů se do aktualizací zapisuje dál automaticky. Ruční řádky slouží jako zprávy pro hráče.</div>
+        <div id="adminManualUpdatesList"></div>
+      </div>
+    </div>
+  </div>`;
 }
 
 async function renderAdminManualUpdatesPreview(){
@@ -4755,56 +4765,92 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
 </script>
 
 
+
 <script id="admin-no-old-flicker-final-v1">
 (function(){
   function root(){return document.getElementById('adminContent');}
-  function markAdminReady(){
-    const r=root();
-    if(!r)return;
-    const ready=!!r.querySelector('.admin-dashboard,.admin-mini-tabs,.admin-tab-panel');
-    r.classList.toggle('admin-dashboard-ready',ready);
+
+  function hasAdminContent(r){
+    if(!r)return false;
+    return !!r.querySelector('.admin-dashboard,.admin-mini-tabs,.admin-tab-panel,.admin-box');
   }
 
-  // Při otevření adminu okamžitě smaž ready stav, aby starý vzhled neměl šanci probliknout.
+  function markAdminReady(force){
+    const r=root();
+    if(!r)return;
+    const ready=force || !!r.querySelector('.admin-dashboard,.admin-mini-tabs,.admin-tab-panel');
+    if(ready)r.classList.add('admin-dashboard-ready');
+  }
+
+  function forceReadySoon(){
+    setTimeout(function(){markAdminReady(false);},80);
+    setTimeout(function(){markAdminReady(false);},250);
+    // Důležité: když se nepovede přestavba do nového dashboardu,
+    // po 900 ms ukážeme aspoň funkční admin boxy, aby admin nikdy nezůstal viset.
+    setTimeout(function(){
+      const r=root();
+      if(r && hasAdminContent(r))r.classList.add('admin-dashboard-ready');
+    },900);
+    setTimeout(function(){
+      const r=root();
+      if(r)r.classList.add('admin-dashboard-ready');
+    },1600);
+  }
+
   const oldSwitchTab=window.switchTab;
-  if(typeof oldSwitchTab==='function' && !window.__finalNoFlickerSwitch){
-    window.__finalNoFlickerSwitch=true;
+  if(typeof oldSwitchTab==='function' && !window.__finalNoFlickerSwitchSafe){
+    window.__finalNoFlickerSwitchSafe=true;
     window.switchTab=function(name,btn){
       if(name==='admin'){
         const r=root();
         if(r)r.classList.remove('admin-dashboard-ready');
       }
-      const result=oldSwitchTab.apply(this,arguments);
-      if(name==='admin'){
-        setTimeout(markAdminReady,80);
-        setTimeout(markAdminReady,250);
-        setTimeout(markAdminReady,600);
+      let result;
+      try{
+        result=oldSwitchTab.apply(this,arguments);
+      }catch(e){
+        console.error('switchTab admin error:',e);
+        markAdminReady(true);
+        throw e;
       }
+      if(name==='admin')forceReadySoon();
       return result;
     };
   }
 
   const oldRenderAdmin=window.renderAdmin;
-  if(typeof oldRenderAdmin==='function' && !window.__finalNoFlickerRender){
-    window.__finalNoFlickerRender=true;
+  if(typeof oldRenderAdmin==='function' && !window.__finalNoFlickerRenderSafe){
+    window.__finalNoFlickerRenderSafe=true;
     window.renderAdmin=async function(){
       const r=root();
       if(r)r.classList.remove('admin-dashboard-ready');
-      const result=await oldRenderAdmin.apply(this,arguments);
-      setTimeout(markAdminReady,80);
-      setTimeout(markAdminReady,250);
-      setTimeout(markAdminReady,600);
-      return result;
+      try{
+        const result=await oldRenderAdmin.apply(this,arguments);
+        forceReadySoon();
+        return result;
+      }catch(e){
+        console.error('renderAdmin error:',e);
+        const rr=root();
+        if(rr){
+          rr.classList.add('admin-dashboard-ready');
+          rr.innerHTML='<div class="admin-box"><h3>Admin se nepodařilo načíst</h3><div class="empty">'+escapeHTML(e.message||String(e))+'</div></div>';
+        }
+      }
     };
   }
 
   document.addEventListener('DOMContentLoaded',function(){
-    setTimeout(markAdminReady,300);
+    forceReadySoon();
     const r=root()||document.body;
-    new MutationObserver(markAdminReady).observe(r,{childList:true,subtree:true});
+    new MutationObserver(function(){
+      const rr=root();
+      if(!rr)return;
+      if(rr.querySelector('.admin-dashboard,.admin-mini-tabs,.admin-tab-panel'))markAdminReady(false);
+    }).observe(r,{childList:true,subtree:true});
   });
 })();
 </script>
+
 
 </body>
 </html>
