@@ -232,6 +232,21 @@ select:focus{border-color:var(--blue)}
 .empty{text-align:center;padding:2rem;color:var(--text3);font-size:13px}
 .sec-title{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1.35px;color:var(--gold);margin:1.25rem 0 .65rem;text-shadow:0 0 10px rgba(227,179,65,.35);display:flex;align-items:center;gap:6px}
 .sec-title::before{content:'';width:4px;height:14px;border-radius:999px;background:var(--gold);box-shadow:0 0 10px rgba(227,179,65,.5)}
+
+
+/* === Odměna soutěže v adminu === */
+.reward-admin-box{border-color:rgba(227,179,65,.42)!important;box-shadow:0 14px 34px rgba(0,0,0,.28),0 0 18px rgba(227,179,65,.08)!important}
+.reward-admin-grid{display:grid;grid-template-columns:1fr 260px;gap:14px;align-items:start}
+.reward-admin-state{font-size:14px;margin-bottom:8px;color:var(--text2)}
+.reward-admin-note{font-size:12px;line-height:1.45;color:var(--text3);margin-top:8px}
+.reward-admin-preview{border:1px solid rgba(139,148,158,.22);background:rgba(13,17,23,.45);border-radius:12px;padding:10px;text-align:center}
+.reward-admin-preview img{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:9px;border:1px solid rgba(227,179,65,.35);display:block;background:rgba(0,0,0,.25)}
+.reward-admin-preview small{display:block;color:var(--text3);font-size:11px;margin-top:6px}
+.reward-admin-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.reward-admin-actions .btn-a{width:100%}
+.reward-hidden-note{display:none!important}
+@media(max-width:760px){.reward-admin-grid{grid-template-columns:1fr}.reward-admin-actions{grid-template-columns:1fr}}
+
 </style>
 
 <style id="unified-glass-boxes-stable-fix">
@@ -1345,6 +1360,9 @@ body.support-hidden .join-support-box{display:none !important}
 
 function openRewardModal(){
   const modal=document.getElementById('rewardModal');
+  const img=document.querySelector('#rewardBox .reward-img');
+  const modalImg=document.querySelector('#rewardModal .reward-modal-img');
+  if(img&&modalImg)modalImg.src=img.src;
   if(modal)modal.classList.add('show');
 }
 function closeRewardModal(e){
@@ -1364,6 +1382,7 @@ let currentJoinRequest=null,joinRequestsAvailable=true;
 let supportBoxEnabled=true,supportSettingsAvailable=true;
 let defaultCompetitionId=null,defaultCompetitionSettingsAvailable=true;
 let currentRulesOverride=null,rulesSettingsAvailable=true;
+let currentRewardSetting=null,rewardSettingsAvailable=true;
 let matchLockRefreshTimer=null;
 const pending={};
 
@@ -1408,6 +1427,7 @@ async function openMain(){
   document.getElementById('topName').textContent=currentUser.username;
   if(currentUser.username===ADMIN_USERNAME)document.getElementById('adminNavBtn').style.display='block';
   await loadActiveComp();
+  await loadRewardSetting();
   renderRules();
   await settleWinnings();
   await updateCreditsDisplay();
@@ -1551,6 +1571,7 @@ async function switchCompetition(id){
   sessionStorage.setItem('tip_competition_id_session',id);
   await refreshCurrentMembership();
   await loadCurrentRulesOverride();
+  await loadRewardSetting();
   renderCompetitionSwitch();
   renderRules();
   await settleWinnings();
@@ -2038,13 +2059,216 @@ async function renderAdminManualUpdatesPreview(){
   }
 }
 
+
+
+function getDefaultRewardImage(){
+  const img=document.querySelector('#rewardBox .reward-img')||document.querySelector('#rewardModal .reward-modal-img');
+  return img?img.getAttribute('src'):'';
+}
+
+function defaultRewardSetting(){
+  return {
+    enabled:isPointsCompetition(),
+    title:'Hraje se o odměnu !!!',
+    badge:currentComp?.name||'Odměna soutěže',
+    description:'Vítěz bodové soutěže získá připravenou odměnu.\nTipuj zápasy, sbírej body a zabojuj o 1. místo v žebříčku.\nKaždý bod může rozhodnout.',
+    image_url:getDefaultRewardImage()
+  };
+}
+
+function rewardStorageKey(){return currentComp?`reward_setting_${currentComp.id}`:'reward_setting_null';}
+function parseRewardBool(v){return String(v).toLowerCase()==='true'||String(v)==='1'||String(v).toLowerCase()==='yes'||String(v).toLowerCase()==='on';}
+
+function normalizeRewardSetting(row){
+  const d=defaultRewardSetting();
+  if(!row)return d;
+  return {
+    enabled:row.enabled===undefined||row.enabled===null?false:!!row.enabled,
+    title:row.title||d.title,
+    badge:row.badge||row.competition_label||d.badge,
+    description:row.description||d.description,
+    image_url:row.image_url||row.image||d.image_url
+  };
+}
+
+async function loadRewardSetting(){
+  currentRewardSetting=defaultRewardSetting();
+  rewardSettingsAvailable=true;
+  if(!currentComp){renderRewardBox();return currentRewardSetting;}
+  try{
+    const{data,error}=await sb.from('competition_rewards').select('*').eq('competition_id',currentComp.id).maybeSingle();
+    if(error){
+      rewardSettingsAvailable=false;
+      const local=localStorage.getItem(rewardStorageKey());
+      if(local)currentRewardSetting=normalizeRewardSetting(JSON.parse(local));
+      console.warn('reward setting:',error.message||error);
+    }else if(data){
+      currentRewardSetting=normalizeRewardSetting(data);
+      localStorage.setItem(rewardStorageKey(),JSON.stringify(currentRewardSetting));
+    }else{
+      const local=localStorage.getItem(rewardStorageKey());
+      if(local)currentRewardSetting=normalizeRewardSetting(JSON.parse(local));
+    }
+  }catch(e){
+    rewardSettingsAvailable=false;
+    const local=localStorage.getItem(rewardStorageKey());
+    if(local)currentRewardSetting=normalizeRewardSetting(JSON.parse(local));
+    console.warn('reward setting:',e);
+  }
+  renderRewardBox();
+  return currentRewardSetting;
+}
+
+async function saveRewardSetting(setting){
+  if(!currentComp){alert('Nejdřív vyber soutěž.');return;}
+  currentRewardSetting=normalizeRewardSetting(setting);
+  localStorage.setItem(rewardStorageKey(),JSON.stringify(currentRewardSetting));
+  const payload={
+    competition_id:currentComp.id,
+    enabled:!!currentRewardSetting.enabled,
+    title:currentRewardSetting.title||'Hraje se o odměnu !!!',
+    badge:currentRewardSetting.badge||currentComp.name||'Odměna soutěže',
+    description:currentRewardSetting.description||'',
+    image_url:currentRewardSetting.image_url||'',
+    updated_at:new Date().toISOString()
+  };
+  try{
+    const{error}=await sb.from('competition_rewards').upsert(payload,{onConflict:'competition_id'});
+    if(error){
+      rewardSettingsAvailable=false;
+      alert('Odměna se uložila jen v tomto prohlížeči. Pro veřejné zobrazení musí existovat tabulka competition_rewards. Chyba: '+error.message);
+    }else{
+      rewardSettingsAvailable=true;
+      alert('Odměna soutěže uložena.');
+    }
+  }catch(e){
+    rewardSettingsAvailable=false;
+    alert('Odměna se uložila jen v tomto prohlížeči. Chyba: '+(e.message||e));
+  }
+  renderRewardBox();
+}
+
+function renderRewardDescription(desc){
+  const lines=String(desc||'').split('\n').map(x=>x.trim()).filter(Boolean);
+  if(!lines.length)return '<strong>Vítěz soutěže získá připravenou odměnu.</strong>';
+  return lines.map((line,i)=>{
+    const safe=escapeHTML(line);
+    if(i===0)return `<strong>${safe}</strong>`;
+    if(i===lines.length-1)return `<b>${safe}</b>`;
+    return safe;
+  }).join('<br>');
+}
+
+function renderRewardBox(){
+  const box=document.getElementById('rewardBox');
+  if(!box)return;
+  const s=normalizeRewardSetting(currentRewardSetting);
+  if(!s.enabled){box.style.display='none';return;}
+  const img=s.image_url||getDefaultRewardImage();
+  box.querySelector('.reward-title').textContent='🎁 '+(s.title||'Hraje se o odměnu !!!');
+  box.querySelector('.reward-badge').textContent=s.badge||currentComp?.name||'Odměna soutěže';
+  const txt=box.querySelector('.reward-text');
+  if(txt)txt.innerHTML=renderRewardDescription(s.description);
+  const imgEl=box.querySelector('.reward-img');
+  if(imgEl&&img)imgEl.src=img;
+  const modalImg=document.querySelector('#rewardModal .reward-modal-img');
+  if(modalImg&&img)modalImg.src=img;
+  box.style.display='block';
+}
+
+function renderRewardAdminBox(){
+  const s=normalizeRewardSetting(currentRewardSetting);
+  const note=rewardSettingsAvailable
+    ? 'Nastavení se uloží veřejně do Supabase a projeví se všem hráčům u této soutěže.'
+    : 'Pozor: tabulka competition_rewards není dostupná, nastavení je jen lokální.';
+  return `<div class="admin-box reward-admin-box"><h3>Odměna pro vítěze</h3>
+    <div class="reward-admin-grid">
+      <div>
+        <div class="reward-admin-state">Aktuálně: ${s.enabled?'<strong style="color:var(--green)">zobrazeno hráčům</strong>':'<strong style="color:var(--red)">skryto hráčům</strong>'}</div>
+        <div class="field"><label>Zobrazovat odměnu u aktuální soutěže</label><select id="rewardEnabled"><option value="true" ${s.enabled?'selected':''}>Ano, zobrazit</option><option value="false" ${!s.enabled?'selected':''}>Ne, skrýt</option></select></div>
+        <div class="field"><label>Nadpis</label><input id="rewardTitleInput" value="${escapeHTML(s.title||'')}" placeholder="Hraje se o odměnu !!!"></div>
+        <div class="field"><label>Štítek vpravo</label><input id="rewardBadgeInput" value="${escapeHTML(s.badge||currentComp?.name||'')}" placeholder="Název soutěže / odměny"></div>
+        <div class="field"><label>Text odměny — každý řádek zvlášť</label><textarea id="rewardDescriptionInput" rows="4">${escapeHTML(s.description||'')}</textarea></div>
+        <div class="field"><label>Obrázek odměny</label><input id="rewardImageFile" type="file" accept="image/*" onchange="previewRewardImageFromInput()"></div>
+        <input type="hidden" id="rewardImageData" value="${escapeHTML(s.image_url||'')}">
+        <div class="reward-admin-actions">
+          <button class="btn-a btn-g" onclick="saveRewardFromAdmin()">Uložit odměnu</button>
+          <button class="btn-a ${s.enabled?'support-off':''}" onclick="toggleRewardFromAdmin()">${s.enabled?'Skrýt odměnu':'Zobrazit odměnu'}</button>
+        </div>
+        <div class="reward-admin-note">${note}<br>Obrázek se při výběru zmenší a uloží k aktuální soutěži. Ideálně používej JPG/PNG/WebP do cca 2 MB.</div>
+      </div>
+      <div class="reward-admin-preview">
+        <img id="rewardAdminPreview" src="${escapeHTML(s.image_url||getDefaultRewardImage())}" alt="Náhled odměny">
+        <small>Náhled obrázku odměny</small>
+      </div>
+    </div>
+  </div>`;
+}
+
+function resizeImageFileToDataUrl(file,maxW=1200,quality=.82){
+  return new Promise((resolve,reject)=>{
+    if(!file){resolve('');return;}
+    const reader=new FileReader();
+    reader.onload=()=>{
+      const img=new Image();
+      img.onload=()=>{
+        const scale=Math.min(1,maxW/img.width);
+        const w=Math.max(1,Math.round(img.width*scale));
+        const h=Math.max(1,Math.round(img.height*scale));
+        const canvas=document.createElement('canvas');
+        canvas.width=w;canvas.height=h;
+        const ctx=canvas.getContext('2d');
+        ctx.drawImage(img,0,0,w,h);
+        resolve(canvas.toDataURL('image/webp',quality));
+      };
+      img.onerror=reject;
+      img.src=reader.result;
+    };
+    reader.onerror=reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function previewRewardImageFromInput(){
+  const input=document.getElementById('rewardImageFile');
+  const file=input?.files?.[0];
+  if(!file)return;
+  try{
+    const dataUrl=await resizeImageFileToDataUrl(file,1200,.82);
+    const hidden=document.getElementById('rewardImageData');
+    const preview=document.getElementById('rewardAdminPreview');
+    if(hidden)hidden.value=dataUrl;
+    if(preview)preview.src=dataUrl;
+  }catch(e){
+    alert('Obrázek se nepodařilo načíst: '+(e.message||e));
+  }
+}
+
+async function saveRewardFromAdmin(){
+  const s={
+    enabled:parseRewardBool(document.getElementById('rewardEnabled')?.value),
+    title:document.getElementById('rewardTitleInput')?.value?.trim()||'Hraje se o odměnu !!!',
+    badge:document.getElementById('rewardBadgeInput')?.value?.trim()||currentComp?.name||'Odměna soutěže',
+    description:document.getElementById('rewardDescriptionInput')?.value?.trim()||'',
+    image_url:document.getElementById('rewardImageData')?.value||currentRewardSetting?.image_url||getDefaultRewardImage()
+  };
+  await saveRewardSetting(s);
+  renderAdmin();
+}
+
+async function toggleRewardFromAdmin(){
+  const s=normalizeRewardSetting(currentRewardSetting);
+  s.enabled=!s.enabled;
+  await saveRewardSetting(s);
+  renderAdmin();
+}
+
 function renderRules(){
   if(currentRulesOverride){renderRulesFromData(currentRulesOverride);return;}
   const grid=document.getElementById('rulesGrid');
   const note=document.getElementById('rulesNote');
-  const rewardBox=document.getElementById('rewardBox');
   const pointsMode=isPointsCompetition();
-  if(rewardBox)rewardBox.style.display=pointsMode?'block':'none';
+  renderRewardBox();
   if(!grid||!note)return;
   if(pointsMode){
     grid.innerHTML=`
@@ -3216,6 +3440,7 @@ async function renderLeaderboard(){
 async function renderAdmin(){
   if(currentUser.username!==ADMIN_USERNAME)return;
   await loadSupportBoxSetting();
+  await loadRewardSetting();
   const el=document.getElementById('adminContent');
   el.innerHTML='<div class="loading"><div class="spin"></div><br>Načítám...</div>';
   const compsResp=await sb.from('competitions').select('*').order('created_at',{ascending:false});
@@ -3264,6 +3489,7 @@ async function renderAdmin(){
   }
 
   html+=renderSupportAdminBox();
+  html+=renderRewardAdminBox();
   html+=renderDefaultCompetitionAdminBox(comps);
   html+=renderRulesUpdatesAdminBox();
 
@@ -3912,7 +4138,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
   function categorizeBox(box){
     const t=adminTitleText(box);
     if(t.includes('žádosti')) return 'requests';
-    if(t.includes('nová soutěž')||t==='soutěže'||t.includes('výchozí')||t.includes('podpora')||t.includes('pravidla')||t.includes('aktualizace')) return 'competitions';
+    if(t.includes('nová soutěž')||t==='soutěže'||t.includes('výchozí')||t.includes('podpora')||t.includes('odměna')||t.includes('odmena')||t.includes('pravidla')||t.includes('aktualizace')) return 'competitions';
     if(t.includes('přidat zápas')||t.includes('přidat událost')||t.includes('přehled zápasů')||t.includes('upravit kurzy')||t.includes('zadat výsledky')) return 'matches';
     if(t.includes('kredity')||t.includes('hráče')||t.includes('účast')||t.includes('přejmenovat')) return 'players';
     return 'competitions';
