@@ -4141,23 +4141,84 @@ async function archiveCurrentAndCreateNextPeriod(){
   const name=prompt('Název nového období:',nextPeriodName());
   if(!name)return;
   if(!confirm(`Ukončit období ${currentPeriod.name} a vytvořit ${name}?`))return;
-  await archivePeriod(currentPeriod.id,false);
-  document.getElementById('newPeriodName')?.setAttribute('value',name);
-  const payload={competition_id:currentComp.id,name:name.trim(),period_type:isPointsCompetition()?'year':'month',date_from:new Date().toISOString().slice(0,10),is_active:true,is_archived:false};
-  const{data,error}=await sb.from('competition_periods').insert(payload).select('*').single();
-  if(error){alert('Nové období se nepodařilo vytvořit: '+error.message);return;}
-  await loadCompetitionPeriods();
-  currentPeriod=data;
-  localStorage.setItem(periodStorageKey(),data.id);
-  renderPeriodSwitch();
-  await renderAdmin();
-  await renderMatches();
+
+  try{
+    const{error:archErr}=await sb.from('competition_periods').update({
+      is_active:false,
+      is_archived:true,
+      updated_at:new Date().toISOString()
+    }).eq('id',currentPeriod.id);
+    if(archErr){alert('Archivace se nepodařila: '+archErr.message);return;}
+
+    const payload={
+      competition_id:currentComp.id,
+      name:name.trim(),
+      period_type:isPointsCompetition()?'year':'month',
+      date_from:new Date().toISOString().slice(0,10),
+      is_active:true,
+      is_archived:false
+    };
+
+    const{data,error}=await sb.from('competition_periods').insert(payload).select('*').single();
+    if(error){alert('Nové období se nepodařilo vytvořit: '+error.message);return;}
+
+    await loadCompetitionPeriods();
+    currentPeriod=data;
+    localStorage.setItem(periodStorageKey(),data.id);
+    renderPeriodSwitch();
+    await renderAdmin();
+    await renderMatches();
+    alert('Období bylo ukončeno a nové období vytvořeno.');
+  }catch(e){
+    console.error('archiveCurrentAndCreateNextPeriod failed:',e);
+    alert('Akce se nepodařila: '+(e?.message||String(e))+'. Zkus Ctrl + F5 a opakuj akci.');
+  }
 }
 
 async function archivePeriod(id,rerender=true){
-  const{error}=await sb.from('competition_periods').update({is_active:false,is_archived:true,date_to:new Date().toISOString().slice(0,10)}).eq('id',id);
-  if(error){alert('Archivace se nepodařila: '+error.message);return;}
-  if(rerender){await loadCompetitionPeriods();await renderAdmin();await renderMatches();}
+  if(!id){alert('Není vybrané období k archivaci.');return;}
+
+  const p=(allCompetitionPeriods||[]).find(x=>String(x.id)===String(id));
+  const label=p?.name||'vybrané období';
+
+  if(!confirm(`Archivovat období "${label}"?\n\nHráči ho dál uvidí jako historii, ale nepůjde v něm tipovat.`))return;
+
+  try{
+    // Neposíláme date_to, protože u některých nastavení databáze / formátu data
+    // to může v prohlížeči spadnout na "Failed to fetch".
+    // Archivace je hlavně is_archived=true a is_active=false.
+    const payload={
+      is_active:false,
+      is_archived:true,
+      updated_at:new Date().toISOString()
+    };
+
+    const{error}=await sb.from('competition_periods').update(payload).eq('id',id);
+    if(error){alert('Archivace se nepodařila: '+error.message);return;}
+
+    await loadCompetitionPeriods();
+
+    // Po archivaci necháme zobrazené archivované období, aby šlo hned zkontrolovat.
+    const archived=(allCompetitionPeriods||[]).find(x=>String(x.id)===String(id));
+    if(archived){
+      currentPeriod=archived;
+      localStorage.setItem(periodStorageKey(),archived.id);
+    }
+
+    renderPeriodSwitch();
+
+    if(rerender){
+      await renderAdmin();
+      await renderMatches();
+      if(document.getElementById('tab-mytips')?.style.display!=='none')renderMyTips();
+      if(document.getElementById('tab-leaderboard')?.style.display!=='none')renderLeaderboard();
+    }
+
+    alert('Období bylo přesunuto do archivu.');
+  }catch(e){
+    console.error('archivePeriod failed:',e);
+    alert('Archivace se nepodařila: '+(e?.message||String(e))+'. Zkus obnovit stránku přes Ctrl + F5 a zkus to znovu.');
+  }
 }
 
 async function setActivePeriod(id){
