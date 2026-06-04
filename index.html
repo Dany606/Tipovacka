@@ -1775,6 +1775,38 @@ function __normalizeRewardSettingSafe(data){
 window.__normalizeRewardSettingSafe=__normalizeRewardSettingSafe;
 window.normalizeRewardSetting=__normalizeRewardSettingSafe;
 
+
+const SUPABASE_URL='https://yrvfjrrjywvblkolwmnn.supabase.co';
+const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlydmZqcnJqeXd2Ymxrb2x3bW5uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxODk1NjYsImV4cCI6MjA5NDc2NTU2Nn0.tTNAjYnWoXVFqiQoMdxJPYO3CXup-JBmfvs08IWDK3Y';
+const ADMIN_USERNAME='Dany';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
+let currentUser=null,currentComp=null,currentPeriod=null,allActiveComps=[],allCompetitionPeriods=[],allMatches=[],allTips=[];
+let periodsTableAvailable=true;
+let currentMembership=null,membershipTableAvailable=true;
+let currentJoinRequest=null,joinRequestsAvailable=true;
+let supportBoxEnabled=true,supportSettingsAvailable=true;
+let defaultCompetitionId=null,defaultCompetitionSettingsAvailable=true;
+let currentRulesOverride=null,rulesSettingsAvailable=true;
+let currentRewardSetting=null,rewardSettingsAvailable=true;
+let matchLockRefreshTimer=null;
+const pending={};
+
+window.addEventListener('load',async()=>{
+  const saved=localStorage.getItem('tip_user');
+  if(saved){
+    try{
+      const u=JSON.parse(saved);
+      const{data}=await sb.from('users').select('*').eq('id',u.id).single();
+      if(data){currentUser=data;await openMain();return;}
+    }catch(e){
+      console.warn('auto login failed:',e);
+    }
+  }
+  showLogin();
+});
+
+
 function showLogin(){document.getElementById('loginScreen').className='screen active';document.getElementById('registerScreen').className='screen';}
 function showReg(){document.getElementById('registerScreen').className='screen active';document.getElementById('loginScreen').className='screen';}
 
@@ -1782,11 +1814,21 @@ async function doLogin(){
   const u=document.getElementById('loginUser').value.trim();
   const p=document.getElementById('loginPass').value;
   const err=document.getElementById('loginErr');
+  err.textContent='';
   if(!u||!p){err.textContent='Vyplň přezdívku i heslo.';return;}
-  const{data,error}=await sb.from('users').select('*').eq('username',u).eq('password',p).single();
-  if(error||!data){err.textContent='Špatná přezdívka nebo heslo.';return;}
-  currentUser=data;localStorage.setItem('tip_user',JSON.stringify({id:data.id}));await openMain();
+  try{
+    if(typeof sb==='undefined'){err.textContent='Nepodařilo se inicializovat Supabase. Obnov stránku přes Ctrl + F5.';return;}
+    const{data,error}=await sb.from('users').select('*').eq('username',u).eq('password',p).single();
+    if(error||!data){err.textContent='Špatná přezdívka nebo heslo.';return;}
+    currentUser=data;
+    localStorage.setItem('tip_user',JSON.stringify({id:data.id}));
+    await openMain();
+  }catch(e){
+    console.error('login failed:',e);
+    err.textContent='Přihlášení se nepodařilo: '+(e?.message||String(e));
+  }
 }
+
 
 async function doRegister(){
   const u=document.getElementById('regUser').value.trim();
