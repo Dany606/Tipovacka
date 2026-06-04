@@ -1346,6 +1346,25 @@ img.reward-admin-img{
 }
 </style>
 
+
+<style id="manual-update-formatting-v1">
+.update-text .fmt-gold,
+.admin-update-preview .fmt-gold{color:var(--gold);font-weight:900}
+.update-text .fmt-green,
+.admin-update-preview .fmt-green{color:var(--green);font-weight:900}
+.update-text .fmt-red,
+.admin-update-preview .fmt-red{color:var(--red);font-weight:900}
+.update-text .fmt-blue,
+.admin-update-preview .fmt-blue{color:var(--blue);font-weight:900}
+.update-text strong,
+.admin-update-preview strong{color:var(--text);font-weight:900}
+.update-format-help{margin-top:.5rem;color:var(--text3);font-size:12px;line-height:1.55}
+.update-format-help code{color:var(--gold);background:rgba(13,17,23,.70);border:1px solid rgba(139,148,158,.18);border-radius:6px;padding:.06rem .28rem}
+.format-btn-row{display:flex;flex-wrap:wrap;gap:6px;margin:.45rem 0 .65rem}
+.format-btn-row button{border:1px solid rgba(139,148,158,.22);border-radius:8px;background:rgba(22,27,34,.86);color:var(--text);font-weight:800;padding:.35rem .55rem;cursor:pointer}
+.format-btn-row button:hover{border-color:rgba(227,179,65,.45);color:var(--gold)}
+</style>
+
 </head>
 <body>
 
@@ -2049,8 +2068,33 @@ async function resetRulesFromAdmin(){
   renderAdmin();
 }
 
+
+function formatManualUpdateText(raw){
+  let s=escapeHTML(raw||'');
+  s=s.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  s=s.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  [['gold','fmt-gold'],['green','fmt-green'],['red','fmt-red'],['blue','fmt-blue']].forEach(([tag,cls])=>{
+    s=s.replace(new RegExp('\\['+tag+'\\]','gi'),'<span class="'+cls+'">')
+       .replace(new RegExp('\\[/'+tag+'\\]','gi'),'</span>');
+  });
+  return s.replace(/\n/g,'<br>');
+}
+
+function insertUpdateFormat(openTag,closeTag){
+  const ta=document.getElementById('manualUpdateText');
+  if(!ta)return;
+  const start=ta.selectionStart||0;
+  const end=ta.selectionEnd||0;
+  const selected=ta.value.slice(start,end)||'text';
+  ta.value=ta.value.slice(0,start)+openTag+selected+closeTag+ta.value.slice(end);
+  const pos=start+openTag.length+selected.length;
+  ta.focus();
+  ta.setSelectionRange(pos,pos);
+}
+
 function updateKindText(u){
-  if(u.message||u.text||u.body)return escapeHTML(u.message||u.text||u.body||'');
+  const msg=u.message||u.text||u.body||'';
+  if(msg)return formatManualUpdateText(msg);
   const username=escapeHTML(u.username||u.player_name||u.player||'hráč');
   const amount=Number(u.amount||u.credits||0).toLocaleString('cs-CZ');
   return `Hráč <strong>${username}</strong> si zakoupil <strong>${amount} kreditů</strong>.`;
@@ -2184,8 +2228,18 @@ function renderRulesUpdatesAdminBox(){
       </div>
       <div>
         <div class="tip-label">Ruční aktualizace pro hráče</div>
-        <div class="field"><label>Text aktualizace</label><textarea id="manualUpdateText" rows="4" placeholder="Např. Dnes večer doplním výsledky po 22:00."></textarea></div>
-        <button class="btn-a btn-g" onclick="insertManualUpdate()" style="width:100%">Přidat aktualizaci</button>
+        <div class="field"><label>Text aktualizace</label><textarea id="manualUpdateText" rows="4" placeholder="Např. Soutěž **ukončena**!\nVítězem je [gold]Z3RO2[/gold]."></textarea></div>
+        <div class="format-btn-row">
+          <button type="button" onclick="insertUpdateFormat('**','**')">B tučně</button>
+          <button type="button" onclick="insertUpdateFormat('[gold]','[/gold]')">Zlatě</button>
+          <button type="button" onclick="insertUpdateFormat('[green]','[/green]')">Zeleně</button>
+          <button type="button" onclick="insertUpdateFormat('[red]','[/red]')">Červeně</button>
+          <button type="button" onclick="insertUpdateFormat('[blue]','[/blue]')">Modře</button>
+        </div>
+        <div class="update-format-help">
+          Formátování: <code>**tučně**</code> · <code>[gold]zlatě[/gold]</code> · <code>[green]zeleně[/green]</code> · <code>[red]červeně[/red]</code> · <code>[blue]modře[/blue]</code>
+        </div>
+        <button class="btn-a btn-g" onclick="insertManualUpdate()" style="width:100%;margin-top:.7rem">Přidat aktualizaci</button>
         <div class="admin-small-note">Zakoupení kreditů se do aktualizací zapisuje dál automaticky. Ruční řádky slouží jako zprávy pro hráče.</div>
         <div id="adminManualUpdatesList"></div>
       </div>
