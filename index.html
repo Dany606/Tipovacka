@@ -2630,6 +2630,19 @@ function defaultRewardSetting(){
   };
 }
 
+
+function normalizeRewardSetting(data){
+  const def=defaultRewardSetting();
+  const src=data||{};
+  return {
+    enabled: src.enabled!==undefined && src.enabled!==null ? !!src.enabled : !!def.enabled,
+    title: src.title || def.title || 'Hraje se o odměnu !!!',
+    badge: src.badge || src.label || def.badge || currentPeriod?.name || currentComp?.name || 'Odměna soutěže',
+    description: src.description || src.text || def.description || '',
+    image_url: src.image_url || src.image || def.image_url || ''
+  };
+}
+
 function rewardStorageKey(){
   const comp=currentComp?.id||'null';
   const per=currentPeriod?.id||'no_period';
