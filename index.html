@@ -1730,6 +1730,31 @@ function closeRewardModal(e){
 }
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closeRewardModal(e);});
 
+
+function __normalizeRewardSettingSafe(data){
+  const src=data||{};
+  let def={};
+  try{
+    if(typeof defaultRewardSetting==='function')def=defaultRewardSetting()||{};
+  }catch(e){
+    def={};
+  }
+  let defaultImage='';
+  try{
+    if(typeof getDefaultRewardImage==='function')defaultImage=getDefaultRewardImage()||'';
+  }catch(e){}
+
+  return {
+    enabled: src.enabled!==undefined && src.enabled!==null ? !!src.enabled : !!def.enabled,
+    title: src.title || def.title || 'Hraje se o odměnu !!!',
+    badge: src.badge || src.label || def.badge || (typeof currentPeriod!=='undefined'&&currentPeriod?.name) || (typeof currentComp!=='undefined'&&currentComp?.name) || 'Odměna soutěže',
+    description: src.description || src.text || def.description || '',
+    image_url: src.image_url || src.image || def.image_url || defaultImage || ''
+  };
+}
+window.__normalizeRewardSettingSafe=__normalizeRewardSettingSafe;
+window.normalizeRewardSetting=__normalizeRewardSettingSafe;
+
 const SUPABASE_URL='https://yrvfjrrjywvblkolwmnn.supabase.co';
 const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlydmZqcnJqeXd2Ymxrb2x3bW5uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxODk1NjYsImV4cCI6MjA5NDc2NTU2Nn0.tTNAjYnWoXVFqiQoMdxJPYO3CXup-JBmfvs08IWDK3Y';
 const ADMIN_USERNAME='Dany';
@@ -2615,6 +2640,26 @@ async function renderAdminManualUpdatesPreview(){
     console.warn('admin manual updates:',e);
   }
 }
+
+function parseRewardBool(v){
+  if(v===true||v==='true'||v==='1'||v===1||v==='yes'||v==='ano')return true;
+  return false;
+}
+
+function rewardAdminSetBusy(isBusy){
+  const btns=document.querySelectorAll('.reward-admin-box button');
+  btns.forEach(b=>{
+    b.disabled=!!isBusy;
+    if(isBusy){
+      b.dataset.oldText=b.textContent;
+      if((b.textContent||'').includes('Uložit'))b.textContent='Ukládám...';
+    }else if(b.dataset.oldText){
+      b.textContent=b.dataset.oldText;
+      delete b.dataset.oldText;
+    }
+  });
+}
+
 function getDefaultRewardImage(){
   const img=document.querySelector('#rewardBox .reward-img')||document.querySelector('#rewardModal .reward-modal-img');
   return img?img.getAttribute('src'):'';
@@ -2650,7 +2695,7 @@ function rewardStorageKey(){
 }
 
 async function loadRewardSetting(){
-  currentRewardSetting=normalizeRewardSetting(null);
+  currentRewardSetting=__normalizeRewardSettingSafe(null);
   if(!currentComp){renderRewardBox();return currentRewardSetting;}
 
   try{
@@ -2669,11 +2714,11 @@ async function loadRewardSetting(){
       if(error)throw error;
 
       if(data){
-        currentRewardSetting=normalizeRewardSetting(data);
+        currentRewardSetting=__normalizeRewardSettingSafe(data);
         localStorage.setItem(rewardStorageKey(),JSON.stringify(currentRewardSetting));
       }else{
         // Nové období začíná se skrytou odměnou, dokud ji v adminu nenastavíš.
-        currentRewardSetting=normalizeRewardSetting({
+        currentRewardSetting=__normalizeRewardSettingSafe({
           enabled:false,
           title:'Hraje se o odměnu !!!',
           badge:currentPeriod?.name||currentComp?.name||'Odměna soutěže',
@@ -2689,7 +2734,7 @@ async function loadRewardSetting(){
         .maybeSingle();
       data=resp.data; error=resp.error;
       if(error)throw error;
-      currentRewardSetting=normalizeRewardSetting(data||null);
+      currentRewardSetting=__normalizeRewardSettingSafe(data||null);
     }
 
     rewardSettingsAvailable=true;
@@ -2697,8 +2742,8 @@ async function loadRewardSetting(){
     rewardSettingsAvailable=false;
     // Lokální fallback jen pro stejné období, ne napříč ročníky.
     const local=localStorage.getItem(rewardStorageKey());
-    if(local)currentRewardSetting=normalizeRewardSetting(JSON.parse(local));
-    else currentRewardSetting=normalizeRewardSetting({enabled:false,badge:currentPeriod?.name||currentComp?.name||'Odměna soutěže'});
+    if(local)currentRewardSetting=__normalizeRewardSettingSafe(JSON.parse(local));
+    else currentRewardSetting=__normalizeRewardSettingSafe({enabled:false,badge:currentPeriod?.name||currentComp?.name||'Odměna soutěže'});
     console.warn('reward setting:',e.message||e);
   }
 
@@ -2706,9 +2751,11 @@ async function loadRewardSetting(){
   return currentRewardSetting;
 }
 async function saveRewardSetting(setting){
-  if(!currentComp){alert('Nejdřív vyber soutěž.');return;}
-  currentRewardSetting=normalizeRewardSetting(setting);
+  if(!currentComp){alert('Nejdřív vyber soutěž.');return false;}
+
+  currentRewardSetting=__normalizeRewardSettingSafe(setting);
   localStorage.setItem(rewardStorageKey(),JSON.stringify(currentRewardSetting));
+
   const payload={
     competition_id:currentComp.id,
     period_id:currentPeriod?.id||null,
@@ -2719,18 +2766,32 @@ async function saveRewardSetting(setting){
     image_url:currentRewardSetting.image_url||'',
     updated_at:new Date().toISOString()
   };
+
   try{
-    const table=currentPeriod?.id?'competition_period_rewards':'competition_rewards';
-    const conflict=currentPeriod?.id?'competition_id,period_id':'competition_id';
-    const{error}=await sb.from(table).upsert(payload,{onConflict:conflict});
-    if(error)throw error;
+    if(currentPeriod?.id){
+      const{error}=await sb
+        .from('competition_period_rewards')
+        .upsert(payload,{onConflict:'competition_id,period_id'});
+      if(error)throw error;
+    }else{
+      const legacyPayload={...payload};
+      delete legacyPayload.period_id;
+      const{error}=await sb
+        .from('competition_rewards')
+        .upsert(legacyPayload,{onConflict:'competition_id'});
+      if(error)throw error;
+    }
+
     rewardSettingsAvailable=true;
-    alert('Odměna období uložena.');
+    renderRewardBox();
+    return true;
   }catch(e){
     rewardSettingsAvailable=false;
-    alert('Odměna se uložila jen v tomto prohlížeči. Chyba: '+(e.message||e));
+    console.error('saveRewardSetting failed:',e);
+    renderRewardBox();
+    alert('Odměnu se nepodařilo uložit do Supabase: '+(e?.message||String(e)));
+    return false;
   }
-  renderRewardBox();
 }
 
 function renderRewardDescription(desc){
@@ -2747,7 +2808,7 @@ function renderRewardDescription(desc){
 function renderRewardBox(){
   const box=document.getElementById('rewardBox');
   if(!box)return;
-  const s=normalizeRewardSetting(currentRewardSetting);
+  const s=__normalizeRewardSettingSafe(currentRewardSetting);
   if(!s.enabled){box.style.display='none';return;}
   const img=s.image_url||getDefaultRewardImage();
   box.querySelector('.reward-title').textContent='🎁 '+(s.title||'Hraje se o odměnu !!!');
@@ -2762,7 +2823,7 @@ function renderRewardBox(){
 }
 
 function renderRewardAdminBox(){
-  const s=normalizeRewardSetting(currentRewardSetting);
+  const s=__normalizeRewardSettingSafe(currentRewardSetting);
   const note=rewardSettingsAvailable
     ? 'Nastavení se uloží jen pro právě vybrané období. Každý ročník / měsíc může mít vlastní odměnu.'
     : 'Pozor: tabulka competition_rewards není dostupná, nastavení je jen lokální.';
@@ -2780,7 +2841,7 @@ function renderRewardAdminBox(){
           <button class="btn-a btn-g" onclick="saveRewardFromAdmin()">Uložit odměnu</button>
           <button class="btn-a ${s.enabled?'support-off':''}" onclick="toggleRewardFromAdmin()">${s.enabled?'Skrýt odměnu':'Zobrazit odměnu'}</button>
         </div>
-        <div class="reward-admin-note">${note}<br>Obrázek se při výběru zmenší a uloží k aktuální soutěži. Ideálně používej JPG/PNG/WebP do cca 2 MB.</div>
+        <div class="reward-admin-note">${note}<br>Obrázek se při výběru zmenší a uloží k právě vybranému období. Ideálně používej JPG/PNG/WebP do cca 2 MB.</div>
       </div>
       <div class="reward-admin-preview">
         <img id="rewardAdminPreview" src="${escapeHTML(s.image_url||getDefaultRewardImage())}" alt="Náhled odměny">
@@ -2830,22 +2891,47 @@ async function previewRewardImageFromInput(){
 }
 
 async function saveRewardFromAdmin(){
-  const s={
-    enabled:parseRewardBool(document.getElementById('rewardEnabled')?.value),
-    title:document.getElementById('rewardTitleInput')?.value?.trim()||'Hraje se o odměnu !!!',
-    badge:document.getElementById('rewardBadgeInput')?.value?.trim()||currentComp?.name||'Odměna soutěže',
-    description:document.getElementById('rewardDescriptionInput')?.value?.trim()||'',
-    image_url:document.getElementById('rewardImageData')?.value||currentRewardSetting?.image_url||getDefaultRewardImage()
-  };
-  await saveRewardSetting(s);
-  renderAdmin();
+  rewardAdminSetBusy(true);
+  try{
+    const s={
+      enabled:parseRewardBool(document.getElementById('rewardEnabled')?.value),
+      title:document.getElementById('rewardTitleInput')?.value?.trim()||'Hraje se o odměnu !!!',
+      badge:document.getElementById('rewardBadgeInput')?.value?.trim()||currentPeriod?.name||currentComp?.name||'Odměna soutěže',
+      description:document.getElementById('rewardDescriptionInput')?.value?.trim()||'',
+      image_url:document.getElementById('rewardImageData')?.value||currentRewardSetting?.image_url||''
+    };
+
+    const ok=await saveRewardSetting(s);
+    if(ok){
+      await loadRewardSetting();
+      await renderAdmin();
+      alert('Odměna byla uložena pro období: '+(currentPeriod?.name||currentComp?.name||'aktuální'));
+    }
+  }catch(e){
+    console.error('saveRewardFromAdmin failed:',e);
+    alert('Uložení odměny spadlo: '+(e?.message||String(e)));
+  }finally{
+    rewardAdminSetBusy(false);
+  }
 }
 
 async function toggleRewardFromAdmin(){
-  const s=normalizeRewardSetting(currentRewardSetting);
-  s.enabled=!s.enabled;
-  await saveRewardSetting(s);
-  renderAdmin();
+  rewardAdminSetBusy(true);
+  try{
+    const s=__normalizeRewardSettingSafe(currentRewardSetting);
+    s.enabled=!s.enabled;
+    const ok=await saveRewardSetting(s);
+    if(ok){
+      await loadRewardSetting();
+      await renderAdmin();
+      alert(s.enabled?'Odměna zobrazena hráčům.':'Odměna skryta hráčům.');
+    }
+  }catch(e){
+    console.error('toggleRewardFromAdmin failed:',e);
+    alert('Přepnutí odměny se nepodařilo: '+(e?.message||String(e)));
+  }finally{
+    rewardAdminSetBusy(false);
+  }
 }
 
 function renderRules(){
@@ -2853,7 +2939,7 @@ function renderRules(){
   const grid=document.getElementById('rulesGrid');
   const note=document.getElementById('rulesNote');
   const pointsMode=isPointsCompetition();
-  renderRewardBox();
+  try{renderRewardBox();}catch(e){console.warn('renderRewardBox:',e);}
   if(!grid||!note)return;
   if(pointsMode){
     grid.innerHTML=`
