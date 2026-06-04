@@ -1365,6 +1365,28 @@ img.reward-admin-img{
 .format-btn-row button:hover{border-color:rgba(227,179,65,.45);color:var(--gold)}
 </style>
 
+
+<style id="competition-periods-v1">
+.period-wrap{border-bottom:1px solid rgba(139,148,158,.14);background:rgba(13,17,23,.55);backdrop-filter:blur(10px)}
+.period-inner{width:min(980px,calc(100% - 24px));margin:0 auto;padding:.65rem 0;display:flex;align-items:center;gap:10px}
+.period-label{color:var(--text3);font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.55px}
+.period-switch{flex:1;max-width:360px;background:rgba(22,27,34,.92);border:1px solid rgba(227,179,65,.26);border-radius:12px;color:var(--text);font-weight:900;padding:.62rem .75rem;outline:none}
+.period-state{font-size:12px;font-weight:900;color:var(--text3);border:1px solid rgba(139,148,158,.16);border-radius:999px;padding:.28rem .62rem;background:rgba(22,27,34,.62)}
+.period-state.active{color:var(--green);border-color:rgba(63,185,80,.26);background:rgba(63,185,80,.08)}
+.period-state.archived{color:var(--gold);border-color:rgba(227,179,65,.32);background:rgba(227,179,65,.09)}
+.archive-note{width:min(980px,calc(100% - 24px));margin:.75rem auto 0;padding:.72rem .85rem;border:1px solid rgba(227,179,65,.25);border-radius:12px;background:rgba(227,179,65,.08);color:var(--gold);font-size:13px;font-weight:800;text-align:center}
+.period-admin-list{display:grid;gap:8px;margin-top:.75rem}
+.period-admin-row{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid rgba(139,148,158,.16);border-radius:12px;padding:.7rem;background:rgba(13,17,23,.36)}
+.period-admin-row strong{color:var(--text)}
+.period-admin-meta{color:var(--text3);font-size:12px;margin-top:2px}
+.period-admin-actions{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
+.period-chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:.18rem .48rem;font-size:11px;font-weight:900;margin-left:.35rem}
+.period-chip.active{color:var(--green);background:rgba(63,185,80,.10);border:1px solid rgba(63,185,80,.22)}
+.period-chip.archived{color:var(--gold);background:rgba(227,179,65,.10);border:1px solid rgba(227,179,65,.22)}
+.period-admin-create{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;margin-top:.9rem}
+@media(max-width:720px){.period-inner{align-items:stretch;flex-direction:column}.period-switch{max-width:none}.period-admin-row{align-items:stretch;flex-direction:column}.period-admin-actions{justify-content:flex-start}.period-admin-create{grid-template-columns:1fr}}
+</style>
+
 </head>
 <body>
 
@@ -1412,6 +1434,13 @@ img.reward-admin-img{
         <span class="credits-pill" id="topCredits">10 000 kr</span>
         <button class="btn-x" onclick="doLogout()" title="Odhlásit">✕</button>
       </div>
+    </div>
+  </div>
+  <div class="period-wrap" id="periodBar" style="display:none">
+    <div class="period-inner">
+      <div class="period-label">Období</div>
+      <select class="period-switch" id="periodSwitch" onchange="switchCompetitionPeriod(this.value)"></select>
+      <div class="period-state" id="periodState"></div>
     </div>
   </div>
   <div class="site-nav">
@@ -1488,7 +1517,8 @@ const SUPABASE_URL='https://yrvfjrrjywvblkolwmnn.supabase.co';
 const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlydmZqcnJqeXd2Ymxrb2x3bW5uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxODk1NjYsImV4cCI6MjA5NDc2NTU2Nn0.tTNAjYnWoXVFqiQoMdxJPYO3CXup-JBmfvs08IWDK3Y';
 const ADMIN_USERNAME='Dany';
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
-let currentUser=null,currentComp=null,allActiveComps=[],allMatches=[],allTips=[];
+let currentUser=null,currentComp=null,currentPeriod=null,allActiveComps=[],allCompetitionPeriods=[],allMatches=[],allTips=[];
+let periodsTableAvailable=true;
 let currentMembership=null,membershipTableAvailable=true;
 let currentJoinRequest=null,joinRequestsAvailable=true;
 let supportBoxEnabled=true,supportSettingsAvailable=true;
@@ -1551,7 +1581,9 @@ async function openMain(){
 
 async function getCurrentUserPoints(){
   if(!currentUser||!currentComp)return 0;
-  const{data:compMatches}=await sb.from('matches').select('id').eq('competition_id',currentComp.id);
+  let compMatchesQuery=sb.from('matches').select('id').eq('competition_id',currentComp.id);
+  compMatchesQuery=applyPeriodFilter(compMatchesQuery);
+  const{data:compMatches}=await compMatchesQuery;
   const compMatchIds=(compMatches||[]).map(m=>m.id);
   if(compMatchIds.length===0)return 0;
   const{data:tips}=await sb.from('tips').select('match_id,winnings,settled').eq('user_id',currentUser.id).eq('settled',true).in('match_id',compMatchIds);
@@ -1659,9 +1691,11 @@ async function loadActiveComp(){
     null;
 
   if(currentComp)localStorage.setItem('tip_competition_id',currentComp.id);
+  await loadCompetitionPeriods();
   await refreshCurrentMembership();
   await loadCurrentRulesOverride();
   renderCompetitionSwitch();
+  renderPeriodSwitch();
 }
 
 function renderCompetitionSwitch(){
@@ -1675,12 +1709,101 @@ function renderCompetitionSwitch(){
   sel.style.display='inline-block';
 }
 
+
+function periodStorageKey(){return currentComp?`tip_period_${currentComp.id}`:'tip_period_null';}
+function periodNameFallback(comp=currentComp){
+  const now=new Date();
+  const y=now.getFullYear();
+  const n=(comp?.name||comp?.league||'').toLowerCase();
+  if(n.includes('mistrov')||n.includes('ms'))return `MS ${y}`;
+  return now.toLocaleDateString('cs-CZ',{month:'long',year:'numeric'}).replace(/^./,c=>c.toUpperCase());
+}
+function sortPeriods(periods){
+  return [...(periods||[])].sort((a,b)=>{
+    const ad=new Date(a.date_from||a.created_at||0).getTime();
+    const bd=new Date(b.date_from||b.created_at||0).getTime();
+    if((b.is_active?1:0)!==(a.is_active?1:0))return (b.is_active?1:0)-(a.is_active?1:0);
+    return bd-ad;
+  });
+}
+function isArchivedPeriod(){return !!(currentPeriod&&currentPeriod.is_archived);}
+function applyPeriodFilter(query){return currentPeriod&&currentPeriod.id?query.eq('period_id',currentPeriod.id):query;}
+function currentPeriodLabel(){return currentPeriod?.name||'Aktuální období';}
+
+async function loadCompetitionPeriods(){
+  allCompetitionPeriods=[]; currentPeriod=null; periodsTableAvailable=true;
+  const bar=document.getElementById('periodBar');
+  if(!currentComp){if(bar)bar.style.display='none';return;}
+  try{
+    const{data,error}=await sb.from('competition_periods').select('*').eq('competition_id',currentComp.id).order('date_from',{ascending:false});
+    if(error)throw error;
+    allCompetitionPeriods=sortPeriods(data||[]);
+    if(!allCompetitionPeriods.length){
+      // Když tabulka existuje, ale soutěž ještě nemá období, zkusíme ho založit.
+      const payload={competition_id:currentComp.id,name:periodNameFallback(),period_type:isPointsCompetition()?'year':'month',date_from:new Date().toISOString().slice(0,10),is_active:true,is_archived:false};
+      const ins=await sb.from('competition_periods').insert(payload).select('*').single();
+      if(!ins.error&&ins.data)allCompetitionPeriods=[ins.data];
+    }
+    const saved=localStorage.getItem(periodStorageKey());
+    currentPeriod=allCompetitionPeriods.find(p=>String(p.id)===String(saved))||allCompetitionPeriods.find(p=>p.is_active&&!p.is_archived)||allCompetitionPeriods[0]||null;
+    if(currentPeriod)localStorage.setItem(periodStorageKey(),currentPeriod.id);
+  }catch(e){
+    periodsTableAvailable=false;
+    console.warn('competition_periods:',e.message||e);
+    currentPeriod={id:null,name:'Aktuální období',is_active:true,is_archived:false};
+    allCompetitionPeriods=[currentPeriod];
+  }
+  renderPeriodSwitch();
+}
+
+function renderPeriodSwitch(){
+  const bar=document.getElementById('periodBar');
+  const sel=document.getElementById('periodSwitch');
+  const state=document.getElementById('periodState');
+  if(!bar||!sel)return;
+  if(!currentComp||!allCompetitionPeriods.length){bar.style.display='none';return;}
+  bar.style.display='block';
+  sel.innerHTML=sortPeriods(allCompetitionPeriods).map(p=>`<option value="${p.id||''}" ${currentPeriod&&String(currentPeriod.id)===String(p.id)?'selected':''}>${escapeHTML(p.name||'Období')} ${p.is_archived?'· archiv':p.is_active?'· aktuální':''}</option>`).join('');
+  if(state){
+    state.className='period-state '+(isArchivedPeriod()?'archived':'active');
+    state.textContent=isArchivedPeriod()?'Archiv – tipování uzavřeno':'Aktuální období';
+  }
+}
+
+async function switchCompetitionPeriod(id){
+  const selected=allCompetitionPeriods.find(p=>String(p.id)===String(id));
+  if(!selected)return;
+  currentPeriod=selected;
+  localStorage.setItem(periodStorageKey(),selected.id);
+  renderPeriodSwitch();
+  await loadCurrentRulesOverride();
+  await loadRewardSetting();
+  renderRules();
+  await settleWinnings();
+  await updateCreditsDisplay();
+  await loadUpdates();
+  await renderMatches();
+  loadTicker();
+  const visibleAdmin=document.getElementById('tab-admin')?.style.display!=='none';
+  const visibleTips=document.getElementById('tab-mytips')?.style.display!=='none';
+  const visibleLb=document.getElementById('tab-leaderboard')?.style.display!=='none';
+  if(visibleAdmin)renderAdmin();
+  if(visibleTips)renderMyTips();
+  if(visibleLb)renderLeaderboard();
+}
+
+function renderArchiveNotice(){
+  if(!isArchivedPeriod())return '';
+  return `<div class="archive-note">📦 Archivní období: ${escapeHTML(currentPeriodLabel())}. Tipování je uzavřené, zobrazuje se uložená historie.</div>`;
+}
+
 async function switchCompetition(id){
   const selected=allActiveComps.find(c=>c.id===id);
   if(!selected)return;
   currentComp=selected;
   localStorage.setItem('tip_competition_id',id);
   sessionStorage.setItem('tip_competition_id_session',id);
+  await loadCompetitionPeriods();
   await refreshCurrentMembership();
   await loadCurrentRulesOverride();
   await loadRewardSetting();
@@ -1956,9 +2079,10 @@ function renderNoParticipants(){
 
 
 
-function rulesSettingKey(comp=currentComp){
-  return comp&&comp.id ? 'rules_'+comp.id : null;
+function rulesSettingKey(comp=currentComp,period=currentPeriod){
+  return comp&&comp.id ? 'rules_'+comp.id+'_'+(period?.id||'current') : null;
 }
+function legacyRulesSettingKey(comp=currentComp){return comp&&comp.id ? 'rules_'+comp.id : null;}
 
 async function loadCurrentRulesOverride(){
   currentRulesOverride=null;
@@ -2124,6 +2248,7 @@ function normalizeAllUpdates(items){
     })
     .filter(u=>u.message || u.amount>0)
     .filter(u=>!u.competition_id || !currentComp || u.competition_id===currentComp.id)
+    .filter(u=>!u.period_id || !currentPeriod || !currentPeriod.id || u.period_id===currentPeriod.id)
     .sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))
     .filter(u=>{
       const key=[u.type,u.message,u.username,u.amount,formatUpdateDate(u.created_at)].join('|');
@@ -2162,18 +2287,19 @@ async function insertManualUpdate(){
     credits:0,
     user_id:adminId,
     competition_id:currentComp.id,
+    period_id:currentPeriod?.id||null,
     created_at:createdAt,
     updated_at:createdAt
   };
 
   const variants=[
     base,
-    {type:base.type,message:base.message,text:base.text,player_name:base.player_name,username:base.username,amount:0,credits:0,user_id:base.user_id,competition_id:base.competition_id,created_at:base.created_at,updated_at:base.updated_at},
-    {type:base.type,message:base.message,player_name:base.player_name,username:base.username,amount:0,user_id:base.user_id,competition_id:base.competition_id,created_at:base.created_at},
-    {type:base.type,text:base.text,player_name:base.player_name,username:base.username,amount:0,user_id:base.user_id,competition_id:base.competition_id,created_at:base.created_at},
-    {message:base.message,text:base.text,player_name:base.player_name,username:base.username,amount:0,competition_id:base.competition_id,created_at:base.created_at},
-    {message:base.message,player_name:base.player_name,amount:0,competition_id:base.competition_id,created_at:base.created_at},
-    {text:base.text,player_name:base.player_name,amount:0,competition_id:base.competition_id,created_at:base.created_at},
+    {type:base.type,message:base.message,text:base.text,player_name:base.player_name,username:base.username,amount:0,credits:0,user_id:base.user_id,competition_id:base.competition_id,period_id:base.period_id,created_at:base.created_at,updated_at:base.updated_at},
+    {type:base.type,message:base.message,player_name:base.player_name,username:base.username,amount:0,user_id:base.user_id,competition_id:base.competition_id,period_id:base.period_id,created_at:base.created_at},
+    {type:base.type,text:base.text,player_name:base.player_name,username:base.username,amount:0,user_id:base.user_id,competition_id:base.competition_id,period_id:base.period_id,created_at:base.created_at},
+    {message:base.message,text:base.text,player_name:base.player_name,username:base.username,amount:0,competition_id:base.competition_id,period_id:base.period_id,created_at:base.created_at},
+    {message:base.message,player_name:base.player_name,amount:0,competition_id:base.competition_id,period_id:base.period_id,created_at:base.created_at},
+    {text:base.text,player_name:base.player_name,amount:0,competition_id:base.competition_id,period_id:base.period_id,created_at:base.created_at},
     {message:base.message,player_name:base.player_name,amount:0,created_at:base.created_at},
     {text:base.text,player_name:base.player_name,amount:0,created_at:base.created_at}
   ];
@@ -2279,7 +2405,7 @@ function defaultRewardSetting(){
   };
 }
 
-function rewardStorageKey(){return currentComp?`reward_setting_${currentComp.id}`:'reward_setting_null';}
+function rewardStorageKey(){return currentComp?`reward_setting_${currentComp.id}_${currentPeriod?.id||'current'}`:'reward_setting_null';}
 function parseRewardBool(v){return String(v).toLowerCase()==='true'||String(v)==='1'||String(v).toLowerCase()==='yes'||String(v).toLowerCase()==='on';}
 
 function normalizeRewardSetting(row){
@@ -2299,13 +2425,16 @@ async function loadRewardSetting(){
   rewardSettingsAvailable=true;
   if(!currentComp){renderRewardBox();return currentRewardSetting;}
   try{
-    const{data,error}=await sb.from('competition_rewards').select('*').eq('competition_id',currentComp.id).maybeSingle();
-    if(error){
-      rewardSettingsAvailable=false;
-      const local=localStorage.getItem(rewardStorageKey());
-      if(local)currentRewardSetting=normalizeRewardSetting(JSON.parse(local));
-      console.warn('reward setting:',error.message||error);
-    }else if(data){
+    let data=null,error=null;
+    if(currentPeriod?.id){
+      const resp=await sb.from('competition_period_rewards').select('*').eq('competition_id',currentComp.id).eq('period_id',currentPeriod.id).maybeSingle();
+      data=resp.data; error=resp.error;
+    }else{
+      const resp=await sb.from('competition_rewards').select('*').eq('competition_id',currentComp.id).maybeSingle();
+      data=resp.data; error=resp.error;
+    }
+    if(error)throw error;
+    if(data){
       currentRewardSetting=normalizeRewardSetting(data);
       localStorage.setItem(rewardStorageKey(),JSON.stringify(currentRewardSetting));
     }else{
@@ -2316,7 +2445,7 @@ async function loadRewardSetting(){
     rewardSettingsAvailable=false;
     const local=localStorage.getItem(rewardStorageKey());
     if(local)currentRewardSetting=normalizeRewardSetting(JSON.parse(local));
-    console.warn('reward setting:',e);
+    console.warn('reward setting:',e.message||e);
   }
   renderRewardBox();
   return currentRewardSetting;
@@ -2328,22 +2457,21 @@ async function saveRewardSetting(setting){
   localStorage.setItem(rewardStorageKey(),JSON.stringify(currentRewardSetting));
   const payload={
     competition_id:currentComp.id,
+    period_id:currentPeriod?.id||null,
     enabled:!!currentRewardSetting.enabled,
     title:currentRewardSetting.title||'Hraje se o odměnu !!!',
-    badge:currentRewardSetting.badge||currentComp.name||'Odměna soutěže',
+    badge:currentRewardSetting.badge||currentPeriod?.name||currentComp.name||'Odměna soutěže',
     description:currentRewardSetting.description||'',
     image_url:currentRewardSetting.image_url||'',
     updated_at:new Date().toISOString()
   };
   try{
-    const{error}=await sb.from('competition_rewards').upsert(payload,{onConflict:'competition_id'});
-    if(error){
-      rewardSettingsAvailable=false;
-      alert('Odměna se uložila jen v tomto prohlížeči. Pro veřejné zobrazení musí existovat tabulka competition_rewards. Chyba: '+error.message);
-    }else{
-      rewardSettingsAvailable=true;
-      alert('Odměna soutěže uložena.');
-    }
+    const table=currentPeriod?.id?'competition_period_rewards':'competition_rewards';
+    const conflict=currentPeriod?.id?'competition_id,period_id':'competition_id';
+    const{error}=await sb.from(table).upsert(payload,{onConflict:conflict});
+    if(error)throw error;
+    rewardSettingsAvailable=true;
+    alert('Odměna období uložena.');
   }catch(e){
     rewardSettingsAvailable=false;
     alert('Odměna se uložila jen v tomto prohlížeči. Chyba: '+(e.message||e));
@@ -2527,11 +2655,14 @@ async function loadTicker(){
     const{data:users}=await sb.from('users').select('*');
     let doneQuery=sb.from('matches').select('*').eq('status','done').order('match_date',{ascending:false});
     if(currentComp)doneQuery=doneQuery.eq('competition_id',currentComp.id);
+    doneQuery=applyPeriodFilter(doneQuery);
     const{data:doneMatches}=await doneQuery;
     let sorted=(users||[]).sort((a,b)=>b.credits-a.credits);
     if(currentComp){const participantIds=await getCompetitionParticipantUserIds();sorted=sorted.filter(u=>participantIds.has(u.id));}
     if(isPointsCompetition()&&currentComp){
-      const{data:compMatches}=await sb.from('matches').select('id').eq('competition_id',currentComp.id);
+      let tickerCompMatchesQuery=sb.from('matches').select('id').eq('competition_id',currentComp.id);
+      tickerCompMatchesQuery=applyPeriodFilter(tickerCompMatchesQuery);
+      const{data:compMatches}=await tickerCompMatchesQuery;
       const compIds=(compMatches||[]).map(m=>m.id);
       const{data:allSettledTips}=compIds.length?await sb.from('tips').select('user_id,winnings,settled').eq('settled',true).in('match_id',compIds):{data:[]};
       const pts={};
@@ -2770,15 +2901,16 @@ async function insertCreditUpdateToSupabase(item){
     credits:Number(item.amount||0)||0,
     user_id:item.user_id||null,
     competition_id:item.competition_id||currentComp?.id||null,
+    period_id:item.period_id||currentPeriod?.id||null,
     created_at:item.created_at||new Date().toISOString(),
     updated_at:new Date().toISOString()
   };
 
   const variants=[
     base,
-    {type:base.type,message:base.message,text:base.text,player_name:base.player_name,username:base.username,amount:base.amount,credits:base.credits,user_id:base.user_id,competition_id:base.competition_id,created_at:base.created_at},
-    {type:base.type,message:base.message,player_name:base.player_name,username:base.username,amount:base.amount,user_id:base.user_id,competition_id:base.competition_id,created_at:base.created_at},
-    {message:base.message,player_name:base.player_name,amount:base.amount,competition_id:base.competition_id,created_at:base.created_at},
+    {type:base.type,message:base.message,text:base.text,player_name:base.player_name,username:base.username,amount:base.amount,credits:base.credits,user_id:base.user_id,competition_id:base.competition_id,period_id:base.period_id,created_at:base.created_at},
+    {type:base.type,message:base.message,player_name:base.player_name,username:base.username,amount:base.amount,user_id:base.user_id,competition_id:base.competition_id,period_id:base.period_id,created_at:base.created_at},
+    {message:base.message,player_name:base.player_name,amount:base.amount,competition_id:base.competition_id,period_id:base.period_id,created_at:base.created_at},
     {message:base.message,player_name:base.player_name,amount:base.amount,created_at:base.created_at}
   ];
 
@@ -2793,7 +2925,7 @@ async function insertCreditUpdateToSupabase(item){
 }
 
 async function addCreditUpdate(username,amount,userId){
-  const item={type:'credits_purchase',username,amount:Number(amount)||0,user_id:userId||null,competition_id:currentComp?.id||null,created_at:new Date().toISOString()};
+  const item={type:'credits_purchase',username,amount:Number(amount)||0,user_id:userId||null,competition_id:currentComp?.id||null,period_id:currentPeriod?.id||null,created_at:new Date().toISOString()};
 
   // Nejdřív uložíme lokálně, aby se aktualizace adminovi vždy zobrazila hned.
   saveLocalCreditUpdate(item);
@@ -2809,7 +2941,9 @@ async function addCreditUpdate(username,amount,userId){
 
 async function settleWinnings(){
   if(!currentComp)return;
-  const{data:matches}=await sb.from('matches').select('*').eq('competition_id',currentComp.id).eq('status','done');
+  let doneMatchesQuery=sb.from('matches').select('*').eq('competition_id',currentComp.id).eq('status','done');
+  doneMatchesQuery=applyPeriodFilter(doneMatchesQuery);
+  const{data:matches}=await doneMatchesQuery;
   if(!matches||!matches.length)return;
 
   const matchIds=matches.map(m=>m.id);
@@ -3102,6 +3236,7 @@ function renderHallOfFameBox(ranked,compMatches,pointsMode){
 }
 
 function isMatchLocked(match){
+  if(isArchivedPeriod())return true;
   if(!match)return false;
   if(match.status==='done'||match.status==='live')return true;
   const d=parseMatchDate(match.match_date);
@@ -3145,8 +3280,11 @@ async function renderMatches(){
   const el=document.getElementById('matchList');
   if(!currentComp){el.innerHTML='<div class="empty">Žádná aktivní soutěž.</div>';return;}
   if(!(await canAccessCurrentCompetition())){el.innerHTML=renderJoinCompetitionGate();return;}
-  const{data:matches}=await sb.from('matches').select('*').eq('competition_id',currentComp.id).order('match_date');
-  if(!matches||!matches.length){el.innerHTML='<div class="empty">Zatím žádné zápasy.</div>';return;}
+  let matchesQuery=sb.from('matches').select('*').eq('competition_id',currentComp.id).order('match_date');
+  matchesQuery=applyPeriodFilter(matchesQuery);
+  const{data:matches,error:matchesError}=await matchesQuery;
+  if(matchesError){el.innerHTML='<div class="empty">Zápasy se nepodařilo načíst: '+escapeHTML(matchesError.message)+'</div>';return;}
+  if(!matches||!matches.length){el.innerHTML=renderArchiveNotice()+'<div class="empty">Zatím žádné zápasy v tomto období.</div>';return;}
   const visibleMatches=matches
     .filter(m=>!isMatchOlderThanDays(m,2))
     .sort((a,b)=>{
@@ -3170,7 +3308,7 @@ async function renderMatches(){
       if(ra===0)return db-da;
       return da-db;
     });
-  if(!visibleMatches.length){el.innerHTML='<div class="empty">Žádné aktuální zápasy. Starší než 2 dny se automaticky skrývají.</div>';return;}
+  if(!visibleMatches.length){el.innerHTML=renderArchiveNotice()+'<div class="empty">Žádné aktuální zápasy. Starší než 2 dny se automaticky skrývají.</div>';return;}
   allMatches=visibleMatches;
   const{data:tips}=await sb.from('tips').select('*').eq('user_id',currentUser.id);
   allTips=tips||[];
@@ -3286,7 +3424,7 @@ async function renderMatches(){
     }
     html+='</div>';
   });
-  el.innerHTML=html;
+  el.innerHTML=renderArchiveNotice()+html;
   refreshVisibleMatchLocks();
   if(!isPointsCompetition())allMatches.forEach(m=>{if(m.status!=='done')updatePotential(m.id);});
   refreshVisibleMatchLocks();
@@ -3437,9 +3575,11 @@ async function renderMyTips(){
   if(!currentComp){el.innerHTML='<div class="empty">Žádná aktivní soutěž.</div>';return;}
   if(!(await canAccessCurrentCompetition())){el.innerHTML=renderJoinCompetitionGate();return;}
   const pointsMode=isPointsCompetition();
-  const{data:matches}=await sb.from('matches').select('*').eq('competition_id',currentComp.id).order('match_date',{ascending:false});
+  let myTipsMatchesQuery=sb.from('matches').select('*').eq('competition_id',currentComp.id).order('match_date',{ascending:false});
+  myTipsMatchesQuery=applyPeriodFilter(myTipsMatchesQuery);
+  const{data:matches}=await myTipsMatchesQuery;
   const{data:tips}=await sb.from('tips').select('*').eq('user_id',currentUser.id);
-  if(!tips||!tips.length){el.innerHTML='<div class="empty">Zatím žádné tipy. Jdi tipovat! 🏒</div>';return;}
+  if(!tips||!tips.length){el.innerHTML=renderArchiveNotice()+'<div class="empty">Zatím žádné tipy v tomto období.</div>';return;}
   let total=0;
   let hasTipWithMatch=false;
   let html='<div class="sec-title">Moje tipy</div><div class="lb-table">';
@@ -3606,7 +3746,9 @@ async function renderLeaderboard(){
   let compMatches=[];
   let compMatchIds=[];
   const matchById={};
-  const{data:matchesForLeaderboard}=await sb.from('matches').select('*').eq('competition_id',currentComp.id);
+  let leaderboardMatchesQuery=sb.from('matches').select('*').eq('competition_id',currentComp.id);
+  leaderboardMatchesQuery=applyPeriodFilter(leaderboardMatchesQuery);
+  const{data:matchesForLeaderboard}=await leaderboardMatchesQuery;
   compMatches=matchesForLeaderboard||[];
   compMatchIds=compMatches.map(m=>m.id);
   compMatches.forEach(m=>{matchById[String(m.id)]=m;});
@@ -3621,9 +3763,12 @@ async function renderLeaderboard(){
       const points=settled.reduce((sum,t)=>sum+(Number(t.winnings)||0),0);
       return{id:u.id,name:u.username,credits:u.credits,tipCount:mt.length,settledCount:settled.length,pending,pendingTips,points};
     }
-    const roi=((u.credits-START_CREDITS)/START_CREDITS*100);
-    const profit=u.credits-START_CREDITS;
-    return{id:u.id,name:u.username,credits:u.credits,tipCount:mt.length,settledCount:settled.length,pending,pendingTips,roi,profit};
+    const staked=mt.reduce((sum,t)=>sum+(Number(t.stake)||0),0);
+    const won=settled.reduce((sum,t)=>sum+(Number(t.winnings)||0),0);
+    const periodCredits=START_CREDITS-staked+won;
+    const roi=((periodCredits-START_CREDITS)/START_CREDITS*100);
+    const profit=periodCredits-START_CREDITS;
+    return{id:u.id,name:u.username,credits:periodCredits,tipCount:mt.length,settledCount:settled.length,pending,pendingTips,roi,profit};
   }).sort((a,b)=>pointsMode?(b.points-a.points||b.tipCount-a.tipCount):(b.credits-a.credits));
 
   const allTipsForComp=(tips||[]).filter(t=>compMatchIds.includes(t.match_id)&&participantIds.has(t.user_id));
@@ -3670,7 +3815,91 @@ async function renderLeaderboard(){
     }
   });
   out+='</tbody></table></div>';
-  el.innerHTML=out;
+  el.innerHTML=renderArchiveNotice()+out;
+}
+
+
+function renderCompetitionPeriodsAdminBox(){
+  const periods=sortPeriods(allCompetitionPeriods||[]);
+  const rows=periods.map(p=>`<div class="period-admin-row">
+    <div><strong>${escapeHTML(p.name||'Období')}</strong>${p.is_active&&!p.is_archived?'<span class="period-chip active">aktuální</span>':''}${p.is_archived?'<span class="period-chip archived">archiv</span>':''}
+      <div class="period-admin-meta">${escapeHTML(p.date_from||'')} ${p.date_to?'– '+escapeHTML(p.date_to):''}</div></div>
+    <div class="period-admin-actions">
+      <button class="btn-a" onclick="switchCompetitionPeriod('${p.id}')">Zobrazit</button>
+      ${!p.is_archived?`<button class="btn-a" onclick="setActivePeriod('${p.id}')">Nastavit aktivní</button>`:''}
+      ${!p.is_archived?`<button class="btn-a support-off" onclick="archivePeriod('${p.id}')">Archivovat</button>`:''}
+    </div>
+  </div>`).join('')||'<div class="empty">Zatím není vytvořené žádné období.</div>';
+  return `<div class="admin-box admin-periods-box"><h3>Historie / období soutěže</h3>
+    <div class="admin-small-note">Tady spravuješ ročníky nebo měsíce aktuální soutěže. Hráči si starší období můžou zobrazit jako archiv, ale nepůjde v nich tipovat.</div>
+    <div class="period-admin-list">${rows}</div>
+    <div class="period-admin-create">
+      <div class="field" style="margin:0"><label>Název nového období</label><input id="newPeriodName" placeholder="${escapeHTML(periodNameFallback())}"></div>
+      <button class="btn-a btn-g" onclick="createPeriodFromAdmin()">Vytvořit období</button>
+    </div>
+    <button class="btn-a btn-g" onclick="archiveCurrentAndCreateNextPeriod()" style="width:100%;margin-top:.8rem">Ukončit aktuální období a vytvořit nové</button>
+  </div>`;
+}
+
+async function createPeriodFromAdmin(){
+  if(!currentComp){alert('Nejdřív vyber soutěž.');return;}
+  const name=(document.getElementById('newPeriodName')?.value||periodNameFallback()).trim();
+  const payload={competition_id:currentComp.id,name,period_type:isPointsCompetition()?'year':'month',date_from:new Date().toISOString().slice(0,10),is_active:true,is_archived:false};
+  await sb.from('competition_periods').update({is_active:false}).eq('competition_id',currentComp.id);
+  const{data,error}=await sb.from('competition_periods').insert(payload).select('*').single();
+  if(error){alert('Období se nepodařilo vytvořit: '+error.message);return;}
+  await loadCompetitionPeriods();
+  currentPeriod=data;
+  localStorage.setItem(periodStorageKey(),data.id);
+  renderPeriodSwitch();
+  await renderAdmin();
+  await renderMatches();
+  alert('Nové období vytvořeno.');
+}
+
+function nextPeriodName(){
+  const base=(currentPeriod?.name||periodNameFallback()).trim();
+  const m=base.match(/(\d{4})/);
+  if(isPointsCompetition()&&m)return base.replace(m[1],String(Number(m[1])+1));
+  const d=new Date();
+  d.setMonth(d.getMonth()+1);
+  return d.toLocaleDateString('cs-CZ',{month:'long',year:'numeric'}).replace(/^./,c=>c.toUpperCase());
+}
+
+async function archiveCurrentAndCreateNextPeriod(){
+  if(!currentPeriod?.id){alert('Aktuální období není uložené v databázi.');return;}
+  const name=prompt('Název nového období:',nextPeriodName());
+  if(!name)return;
+  if(!confirm(`Ukončit období ${currentPeriod.name} a vytvořit ${name}?`))return;
+  await archivePeriod(currentPeriod.id,false);
+  document.getElementById('newPeriodName')?.setAttribute('value',name);
+  const payload={competition_id:currentComp.id,name:name.trim(),period_type:isPointsCompetition()?'year':'month',date_from:new Date().toISOString().slice(0,10),is_active:true,is_archived:false};
+  const{data,error}=await sb.from('competition_periods').insert(payload).select('*').single();
+  if(error){alert('Nové období se nepodařilo vytvořit: '+error.message);return;}
+  await loadCompetitionPeriods();
+  currentPeriod=data;
+  localStorage.setItem(periodStorageKey(),data.id);
+  renderPeriodSwitch();
+  await renderAdmin();
+  await renderMatches();
+}
+
+async function archivePeriod(id,rerender=true){
+  const{error}=await sb.from('competition_periods').update({is_active:false,is_archived:true,date_to:new Date().toISOString().slice(0,10)}).eq('id',id);
+  if(error){alert('Archivace se nepodařila: '+error.message);return;}
+  if(rerender){await loadCompetitionPeriods();await renderAdmin();await renderMatches();}
+}
+
+async function setActivePeriod(id){
+  await sb.from('competition_periods').update({is_active:false}).eq('competition_id',currentComp.id);
+  const{error}=await sb.from('competition_periods').update({is_active:true,is_archived:false,date_to:null}).eq('id',id);
+  if(error){alert('Aktivní období se nepodařilo nastavit: '+error.message);return;}
+  await loadCompetitionPeriods();
+  currentPeriod=allCompetitionPeriods.find(p=>String(p.id)===String(id))||currentPeriod;
+  localStorage.setItem(periodStorageKey(),currentPeriod.id);
+  renderPeriodSwitch();
+  await renderAdmin();
+  await renderMatches();
 }
 
 async function renderAdmin(){
@@ -3683,7 +3912,12 @@ async function renderAdmin(){
   if(compsResp.error){el.innerHTML='<div class="empty">Admin se nepodařilo načíst: '+escapeHTML(compsResp.error.message)+'</div>';return;}
   const usersResp=await sb.from('users').select('id,username,credits').order('username');
   if(usersResp.error){el.innerHTML='<div class="empty">Hráče se nepodařilo načíst: '+escapeHTML(usersResp.error.message)+'</div>';return;}
-  const matchesResp=currentComp?await sb.from('matches').select('*').eq('competition_id',currentComp.id).order('match_date'):{data:[],error:null};
+  let matchesResp={data:[],error:null};
+  if(currentComp){
+    let adminMatchesQuery=sb.from('matches').select('*').eq('competition_id',currentComp.id).order('match_date');
+    adminMatchesQuery=applyPeriodFilter(adminMatchesQuery);
+    matchesResp=await adminMatchesQuery;
+  }
   if(matchesResp.error){el.innerHTML='<div class="empty">Zápasy se nepodařilo načíst: '+escapeHTML(matchesResp.error.message)+'</div>';return;}
   const comps=compsResp.data||[];
   const users=usersResp.data||[];
@@ -3691,7 +3925,7 @@ async function renderAdmin(){
   let joinRequests=[];
   try{const jr=await sb.from('competition_join_requests').select('*').eq('status','pending').order('created_at',{ascending:true}); if(!jr.error)joinRequests=jr.data||[];}catch(e){}
   const visibleAdminMatches=matches.filter(isMatchTodayOrFuture);
-  let html=`<div class="admin-box"><h3>Nová soutěž</h3>
+  let html=renderCompetitionPeriodsAdminBox()+`<div class="admin-box"><h3>Nová soutěž</h3>
     <div class="field"><label>Název</label><input type="text" id="compName" placeholder="NHL Playoff 2026"></div>
     <div class="field"><label>Liga</label><select id="compLeague" onchange="setCompetitionPreset()"><option value="nhl">NHL</option><option value="extraliga">Česká extraliga</option><option value="Mistrovství světa">Mistrovství světa</option><option value="Všehochuť">Všehochuť</option></select></div>
     <div class="field"><label>Typ soutěže</label><select id="compScoringMode"><option value="credits">Kurzová soutěž za kredity</option><option value="points">Bodová soutěž bez kurzů</option></select></div>
@@ -3996,6 +4230,7 @@ async function deactivateComp(id){
 
 
 async function addBinaryEvent(){
+  if(isArchivedPeriod()){alert('Tohle období je archivované. Vytvoř nebo vyber aktuální období.');return;}
   if(!currentComp||!isVsehochutCompetition(currentComp)){alert('Události jsou dostupné jen pro ligu Všehochuť.');return;}
   const q=document.getElementById('evQuestion')?.value.trim();
   const date=document.getElementById('evDate')?.value.trim();
@@ -4006,6 +4241,7 @@ async function addBinaryEvent(){
   if(!q||!date||!opt1||!opt2||!odd1||!odd2||odd1<=1||odd2<=1){alert('Vyplň otázku, datum, obě možnosti a oba kurzy.');return;}
   const payload={
     competition_id:currentComp.id,
+    period_id:currentPeriod?.id||null,
     event_type:'binary',
     event_question:q,
     home:opt1,
@@ -4053,6 +4289,7 @@ async function saveEventResult(mid){
 
 
 async function addMatch(){
+  if(isArchivedPeriod()){alert('Tohle období je archivované. Vytvoř nebo vyber aktuální období.');return;}
   const home=document.getElementById('mHome').value.trim();
   const away=document.getElementById('mAway').value.trim();
   const date=document.getElementById('mDate').value.trim();
@@ -4067,7 +4304,7 @@ async function addMatch(){
   }
   if(!home||!away||!date||(!pointsMode&&(!oh||!od||!oa))){alert('Vyplň vše.');return;}
   if(!pointsMode&&(oh<=1||od<=1||oa<=1)){alert('Kurzy musí být větší než 1.');return;}
-  const payload={competition_id:currentComp.id,home,away,match_date:date,status:'upcoming',odds_home:oh,odds_draw:od,odds_away:oa};
+  const payload={competition_id:currentComp.id,period_id:currentPeriod?.id||null,home,away,match_date:date,status:'upcoming',odds_home:oh,odds_draw:od,odds_away:oa};
   if(!pointsMode&&Number.isFinite(wh)&&Number.isFinite(wa)&&wh>1&&wa>1)payload.regulation_odds={home:wh,away:wa};
   await sb.from('matches').insert(payload);
   alert('Zápas přidán!');renderAdmin();renderMatches();
