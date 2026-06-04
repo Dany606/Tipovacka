@@ -1387,6 +1387,108 @@ img.reward-admin-img{
 @media(max-width:720px){.period-inner{align-items:stretch;flex-direction:column}.period-switch{max-width:none}.period-admin-row{align-items:stretch;flex-direction:column}.period-admin-actions{justify-content:flex-start}.period-admin-create{grid-template-columns:1fr}}
 </style>
 
+
+<style id="period-admin-compact-center-v1">
+/* Historie / období soutěže - kompaktnější a vycentrované */
+.period-admin-box,
+.admin-periods-box,
+.admin-history-periods-box{
+  max-width:760px !important;
+  margin-left:auto !important;
+  margin-right:auto !important;
+}
+.period-admin-box .admin-small-note,
+.admin-periods-box .admin-small-note,
+.admin-history-periods-box .admin-small-note{
+  text-align:center !important;
+  max-width:620px !important;
+  margin:.35rem auto .8rem !important;
+  font-size:12px !important;
+  line-height:1.45 !important;
+}
+.period-row,
+.period-item,
+.period-admin-row{
+  display:grid !important;
+  grid-template-columns:1fr auto !important;
+  align-items:center !important;
+  gap:10px !important;
+  padding:.75rem .85rem !important;
+  border-radius:12px !important;
+}
+.period-row h4,
+.period-item h4,
+.period-admin-row h4{
+  font-size:15px !important;
+  margin:0 !important;
+}
+.period-row .muted,
+.period-item .muted,
+.period-admin-row .muted{
+  font-size:12px !important;
+}
+.period-actions,
+.period-row-actions{
+  display:flex !important;
+  flex-wrap:wrap !important;
+  justify-content:flex-end !important;
+  gap:6px !important;
+}
+.period-actions button,
+.period-row-actions button,
+.period-admin-box button,
+.admin-periods-box button,
+.admin-history-periods-box button{
+  min-height:36px !important;
+  padding:.48rem .75rem !important;
+  font-size:13px !important;
+}
+.period-create-grid,
+.period-edit-grid{
+  display:grid !important;
+  grid-template-columns:1fr auto !important;
+  gap:8px !important;
+  align-items:end !important;
+}
+.period-edit-panel{
+  margin-top:.75rem !important;
+  padding:.75rem !important;
+  border:1px solid rgba(139,148,158,.18);
+  border-radius:12px;
+  background:rgba(13,17,23,.34);
+}
+.period-edit-panel h4{
+  margin:0 0 .6rem !important;
+  color:var(--gold);
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  font-size:13px !important;
+}
+.period-edit-panel .field{
+  margin-bottom:.55rem !important;
+}
+.period-edit-panel input{
+  height:42px !important;
+}
+@media(max-width:720px){
+  .period-row,
+  .period-item,
+  .period-admin-row,
+  .period-create-grid,
+  .period-edit-grid{
+    grid-template-columns:1fr !important;
+  }
+  .period-actions,
+  .period-row-actions{
+    justify-content:stretch !important;
+  }
+  .period-actions button,
+  .period-row-actions button{
+    width:100% !important;
+  }
+}
+</style>
+
 </head>
 <body>
 
@@ -5198,6 +5300,150 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
 })();
 </script>
 
+
+
+<script id="period-admin-edit-compact-v1">
+(function(){
+  function esc(s){
+    if(typeof escapeHTML==='function')return escapeHTML(s);
+    return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  function periodLabel(p){
+    const active=p.is_active?' <span class="pill-ok">aktuální</span>':'';
+    const archived=p.is_archived?' <span class="pill-warn">archiv</span>':'';
+    return `${esc(p.name||'Období')}${active}${archived}`;
+  }
+
+  async function updateCompetitionPeriodAdmin(){
+    const id=document.getElementById('periodEditId')?.value;
+    const name=(document.getElementById('periodEditName')?.value||'').trim();
+    const from=(document.getElementById('periodEditFrom')?.value||'').trim();
+    const to=(document.getElementById('periodEditTo')?.value||'').trim();
+    if(!id){alert('Není vybrané období k úpravě.');return;}
+    if(!name){alert('Napiš název období.');return;}
+
+    const payload={
+      name,
+      date_from:from||null,
+      date_to:to||null,
+      updated_at:new Date().toISOString()
+    };
+
+    const {error}=await sb.from('competition_periods').update(payload).eq('id',id);
+    if(error){alert('Období se nepodařilo upravit: '+error.message);return;}
+
+    alert('Období upraveno.');
+    if(typeof loadCompetitionPeriods==='function')await loadCompetitionPeriods();
+    if(typeof renderAdmin==='function')await renderAdmin();
+    if(typeof renderPeriodSwitcher==='function')renderPeriodSwitcher();
+  }
+  window.updateCompetitionPeriodAdmin=updateCompetitionPeriodAdmin;
+
+  function fillPeriodEdit(id,name,from,to){
+    const box=document.getElementById('periodEditPanel');
+    if(!box)return;
+    document.getElementById('periodEditId').value=id||'';
+    document.getElementById('periodEditName').value=name||'';
+    document.getElementById('periodEditFrom').value=(from||'').slice(0,10);
+    document.getElementById('periodEditTo').value=(to||'').slice(0,10);
+    box.style.display='block';
+    box.scrollIntoView({behavior:'smooth',block:'nearest'});
+  }
+  window.fillPeriodEdit=fillPeriodEdit;
+
+  const oldRenderAdminPeriodsBox=window.renderAdminPeriodsBox || window.renderPeriodsAdminBox || window.renderCompetitionPeriodsAdminBox;
+  if(typeof oldRenderAdminPeriodsBox==='function' && !window.__periodEditBoxWrapped){
+    window.__periodEditBoxWrapped=true;
+    const fnName=window.renderAdminPeriodsBox?'renderAdminPeriodsBox':(window.renderPeriodsAdminBox?'renderPeriodsAdminBox':'renderCompetitionPeriodsAdminBox');
+    window[fnName]=function(){
+      let html=oldRenderAdminPeriodsBox.apply(this,arguments);
+
+      // Přidat kompaktní třídu na hlavní box
+      html=html.replace('admin-box', 'admin-box period-admin-box');
+
+      // Doplnit panel pro editaci aktuálního období, pokud tam ještě není.
+      if(!html.includes('periodEditPanel')){
+        const editPanel=`<div class="period-edit-panel" id="periodEditPanel" style="display:none">
+          <h4>Upravit období</h4>
+          <input type="hidden" id="periodEditId">
+          <div class="period-edit-grid">
+            <div class="field"><label>Název období</label><input id="periodEditName" placeholder="Např. MS 2026"></div>
+            <button class="btn-a btn-g" type="button" onclick="updateCompetitionPeriodAdmin()">Uložit úpravu</button>
+          </div>
+          <div class="period-edit-grid">
+            <div class="field"><label>Datum od</label><input id="periodEditFrom" type="date"></div>
+            <div class="field"><label>Datum do</label><input id="periodEditTo" type="date"></div>
+          </div>
+        </div>`;
+        html=html.replace(/(<button[^>]*>\s*Ukončit aktuální období[\s\S]*?<\/button>)/, '$1'+editPanel);
+        if(!html.includes('periodEditPanel'))html+=editPanel;
+      }
+      return html;
+    };
+  }
+
+  // Když přesný renderer nejde obalit, po vykreslení adminu doplníme tlačítka "Upravit" do seznamu období.
+  function enhancePeriodAdminDom(){
+    const root=document.getElementById('adminContent');
+    if(!root||root.dataset.periodEditEnhanced==='1')return;
+    const headings=[...root.querySelectorAll('h3,.sec-title')];
+    const heading=headings.find(h=>(h.textContent||'').toLowerCase().includes('historie')&&(h.textContent||'').toLowerCase().includes('obdob'));
+    if(!heading)return;
+    const box=heading.closest('.admin-box')||heading.parentElement;
+    if(!box)return;
+    box.classList.add('period-admin-box');
+    root.dataset.periodEditEnhanced='1';
+
+    if(!box.querySelector('#periodEditPanel')){
+      box.insertAdjacentHTML('beforeend', `<div class="period-edit-panel" id="periodEditPanel" style="display:none">
+        <h4>Upravit období</h4>
+        <input type="hidden" id="periodEditId">
+        <div class="period-edit-grid">
+          <div class="field"><label>Název období</label><input id="periodEditName" placeholder="Např. MS 2026"></div>
+          <button class="btn-a btn-g" type="button" onclick="updateCompetitionPeriodAdmin()">Uložit úpravu</button>
+        </div>
+        <div class="period-edit-grid">
+          <div class="field"><label>Datum od</label><input id="periodEditFrom" type="date"></div>
+          <div class="field"><label>Datum do</label><input id="periodEditTo" type="date"></div>
+        </div>
+      </div>`);
+    }
+
+    // Doplnit tlačítko pro aktuální období z dat, pokud máme globální periods/currentPeriod.
+    const periods=window.competitionPeriods||window.currentCompetitionPeriods||window.allPeriods||[];
+    if(Array.isArray(periods)&&periods.length){
+      periods.forEach(p=>{
+        const name=p.name||'';
+        const rows=[...box.querySelectorAll('div,li')].filter(el=>(el.textContent||'').includes(name));
+        const row=rows.find(el=>el.querySelector('button'))||rows[0];
+        if(row&&!row.querySelector(`[data-edit-period="${p.id}"]`)){
+          const btn=document.createElement('button');
+          btn.className='btn-a';
+          btn.type='button';
+          btn.dataset.editPeriod=p.id;
+          btn.textContent='Upravit';
+          btn.onclick=()=>fillPeriodEdit(p.id,p.name,p.date_from,p.date_to);
+          const action=row.querySelector('.period-actions,.period-row-actions')||row;
+          action.appendChild(btn);
+        }
+      });
+    }
+  }
+
+  const oldRenderAdmin=window.renderAdmin;
+  if(typeof oldRenderAdmin==='function' && !window.__periodEditRenderWrapped){
+    window.__periodEditRenderWrapped=true;
+    window.renderAdmin=async function(){
+      const r=await oldRenderAdmin.apply(this,arguments);
+      setTimeout(enhancePeriodAdminDom,80);
+      setTimeout(enhancePeriodAdminDom,300);
+      return r;
+    };
+  }
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(enhancePeriodAdminDom,500));
+})();
+</script>
 
 </body>
 </html>
