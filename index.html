@@ -4144,7 +4144,6 @@ async function renderLeaderboard(){
   await loadSupportBoxSetting();
   await loadCurrentRulesOverride();
   await loadDefaultCompetitionSetting();
-  await loadDefaultCompetitionSetting();
   await settleWinnings();
   await updateCreditsDisplay();
   const el=document.getElementById('leaderboardContent');
@@ -4193,12 +4192,14 @@ async function renderLeaderboard(){
       const points=settled.reduce((sum,t)=>sum+(Number(t.winnings)||0),0);
       return{id:u.id,name:u.username,credits:u.credits,tipCount:mt.length,settledCount:settled.length,pending,pendingTips,points};
     }
-    const staked=mt.reduce((sum,t)=>sum+(Number(t.stake)||0),0);
-    const won=settled.reduce((sum,t)=>sum+(Number(t.winnings)||0),0);
-    const periodCredits=START_CREDITS-staked+won;
-    const roi=((periodCredits-START_CREDITS)/START_CREDITS*100);
-    const profit=periodCredits-START_CREDITS;
-    return{id:u.id,name:u.username,credits:periodCredits,tipCount:mt.length,settledCount:settled.length,pending,pendingTips,roi,profit};
+    // Kreditová soutěž:
+    // V žebříčku musí být skutečný aktuální stav kreditů z tabulky users.
+    // Původní výpočet START - sázky + výhry ignoroval ruční úpravy / nákupy kreditů
+    // a u hráčů pak ukazoval nesmyslné hodnoty, třeba záporné kredity.
+    const actualCredits=Number(u.credits)||0;
+    const roi=((actualCredits-START_CREDITS)/START_CREDITS*100);
+    const profit=actualCredits-START_CREDITS;
+    return{id:u.id,name:u.username,credits:actualCredits,tipCount:mt.length,settledCount:settled.length,pending,pendingTips,roi,profit};
   }).sort((a,b)=>pointsMode?(b.points-a.points||b.tipCount-a.tipCount):(b.credits-a.credits));
 
   const allTipsForComp=(tips||[]).filter(t=>compMatchIds.includes(t.match_id)&&participantIds.has(t.user_id));
