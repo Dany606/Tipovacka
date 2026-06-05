@@ -4839,21 +4839,117 @@ async function decideJoinRequest(requestId,approve){
 }
 
 async function createComp(){
-  const name=document.getElementById('compName').value.trim();
-  const league=document.getElementById('compLeague').value;
-  const season=document.getElementById('compSeason').value.trim();
+  const name=document.getElementById('compName')?.value.trim();
+  const league=document.getElementById('compLeague')?.value;
+  const season=document.getElementById('compSeason')?.value.trim();
   const scoring_mode=document.getElementById('compScoringMode')?.value||'credits';
   const access_type=document.getElementById('compAccessType')?.value||'public';
+  const btn=document.querySelector('button[onclick="createComp()"]');
+
   if(!name||!season){alert('Vyplň název a sezónu.');return;}
-  let payload={name,league,season,active:true,scoring_mode,access_type};
-  let{data,error}=await sb.from('competitions').insert(payload).select().single();
-  // Když v databázi ještě není sloupec scoring_mode, soutěž se vytvoří i bez něj.
-  // Mistrovství světa se i tak pozná podle ligy a poběží bodově.
-  if(error&&(String(error.message||'').includes('scoring_mode')||String(error.message||'').includes('access_type'))){
-    ({data,error}=await sb.from('competitions').insert({name,league,season,active:true}).select().single());
+
+  if(btn){
+    btn.disabled=true;
+    btn.dataset.oldText=btn.textContent;
+    btn.textContent='Vytvářím soutěž...';
   }
-  if(error){alert('Soutěž se nepodařilo vytvořit: '+error.message);return;}
-  if(data){currentComp=data;localStorage.setItem('tip_competition_id',data.id);await loadActiveComp();await updateCreditsDisplay();alert('Soutěž vytvořena!');renderAdmin();renderMatches();loadTicker();}
+
+  try{
+    let data=null;
+    let error=null;
+
+    const fullPayload={name,league,season,active:true,scoring_mode,access_type};
+
+    // 1) Standardní vytvoření se všemi novými sloupci.
+    try{
+      const resp=await sb.from('competitions').insert(fullPayload).select('*').single();
+      data=resp.data;
+      error=resp.error;
+    }catch(e){
+      error=e;
+    }
+
+    // 2) Fallback pro databázi, kde ještě chybí scoring_mode nebo access_type.
+    // Tohle také pomůže, když Supabase vrátí "Failed to fetch" u prvního insertu.
+    if(error){
+      const msg=String(error.message||error||'').toLowerCase();
+      if(msg.includes('scoring_mode') || msg.includes('access_type') || msg.includes('failed to fetch') || msg.includes('fetch')){
+        const resp2=await sb.from('competitions')
+          .insert({name,league,season,active:true})
+          .select('*')
+          .single();
+        data=resp2.data;
+        error=resp2.error;
+
+        // Když soutěž vznikla bez nových sloupců, zkusíme je doplnit samostatně.
+        // Pokud databáze sloupce nemá, jen to potichu přeskočíme.
+        if(data?.id){
+          try{
+            await sb.from('competitions')
+              .update({scoring_mode,access_type})
+              .eq('id',data.id);
+            data={...data,scoring_mode,access_type};
+          }catch(_){}
+        }
+      }
+    }
+
+    if(error){
+      alert('Soutěž se nepodařilo vytvořit: '+(error.message||String(error)));
+      return;
+    }
+
+    if(!data?.id){
+      alert('Soutěž se možná vytvořila, ale nepodařilo se ji načíst. Obnov stránku přes Ctrl + F5.');
+      return;
+    }
+
+    currentComp=data;
+    localStorage.setItem('tip_competition_id',data.id);
+
+    // Nová soutěž má dostat hned své první období.
+    // Hráči do něj budou vstupovat znovu přes potvrzovací tabulku.
+    try{
+      const periodName = String(league||'').toLowerCase().includes('mistrov')
+        ? 'MS '+(new Date().getFullYear())
+        : (season || periodNameFallback());
+
+      const pResp=await sb.from('competition_periods').insert({
+        competition_id:data.id,
+        name:periodName,
+        period_type:String(league||'').toLowerCase().includes('mistrov')?'year':'custom',
+        date_from:new Date().toISOString().slice(0,10),
+        is_active:true,
+        is_archived:false
+      }).select('*').single();
+
+      if(!pResp.error&&pResp.data){
+        currentPeriod=pResp.data;
+        localStorage.setItem(periodStorageKey(),pResp.data.id);
+      }
+    }catch(e){
+      console.warn('period create after competition:',e);
+    }
+
+    await loadActiveComp();
+    await loadCompetitionPeriods();
+    await refreshCurrentMembership();
+    await updateCreditsDisplay();
+
+    alert('Soutěž vytvořena!');
+    await renderAdmin();
+    await renderMatches();
+    loadTicker();
+  }catch(e){
+    console.error('createComp failed:',e);
+    alert('Soutěž se nepodařilo vytvořit: '+(e?.message||String(e)));
+  }finally{
+    if(btn){
+      btn.disabled=false;
+      btn.textContent=btn.dataset.oldText||'Vytvořit soutěž';
+      delete btn.dataset.oldText;
+    }
+  }
 }
 
 async function activateComp(id){
