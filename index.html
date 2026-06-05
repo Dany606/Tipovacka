@@ -2073,6 +2073,7 @@ async function switchCompetitionPeriod(id){
   currentPeriod=selected;
   localStorage.setItem(periodStorageKey(),selected.id);
   renderPeriodSwitch();
+  await refreshCurrentMembership();
   await loadCurrentRulesOverride();
   await loadRewardSetting();
   renderRules();
@@ -2150,13 +2151,19 @@ async function refreshCurrentMembership(){
   membershipTableAvailable=true;
   joinRequestsAvailable=true;
   if(!currentUser||!currentComp)return null;
+
   try{
-    const{data,error}=await sb
+    let q=sb
       .from('competition_players')
       .select('*')
       .eq('competition_id',currentComp.id)
-      .eq('user_id',currentUser.id)
-      .maybeSingle();
+      .eq('user_id',currentUser.id);
+
+    // Účast je nově vždy vázaná na konkrétní období / ročník.
+    // Když hráč byl v MS 2026, automaticky není v MS 2027.
+    if(currentPeriod?.id)q=q.eq('period_id',currentPeriod.id);
+
+    const{data,error}=await q.maybeSingle();
     if(error){
       membershipTableAvailable=false;
       console.warn('competition_players membership:',error.message||error);
@@ -2169,12 +2176,15 @@ async function refreshCurrentMembership(){
   }
 
   try{
-    const{data,error}=await sb
+    let q=sb
       .from('competition_join_requests')
       .select('*')
       .eq('competition_id',currentComp.id)
-      .eq('user_id',currentUser.id)
-      .maybeSingle();
+      .eq('user_id',currentUser.id);
+
+    if(currentPeriod?.id)q=q.eq('period_id',currentPeriod.id);
+
+    const{data,error}=await q.maybeSingle();
     if(error){
       joinRequestsAvailable=false;
       console.warn('competition_join_requests:',error.message||error);
@@ -2249,15 +2259,20 @@ async function requestJoinCurrentCompetition(){
   const btn=document.querySelector('.join-btn');
   if(btn){btn.disabled=true;btn.textContent='Odesílám žádost...';}
   try{
-    const payload={competition_id:currentComp.id,user_id:currentUser.id,status:'pending'};
+    const payload={
+      competition_id:currentComp.id,
+      period_id:currentPeriod?.id||null,
+      user_id:currentUser.id,
+      status:'pending'
+    };
     let{data,error}=await sb.from('competition_join_requests').insert(payload).select('*').single();
     if(error && String(error.message||'').toLowerCase().includes('duplicate')){
-      ({data,error}=await sb.from('competition_join_requests')
+      let q=sb.from('competition_join_requests')
         .update({status:'pending',decided_at:null})
         .eq('competition_id',currentComp.id)
-        .eq('user_id',currentUser.id)
-        .select('*')
-        .single());
+        .eq('user_id',currentUser.id);
+      if(currentPeriod?.id)q=q.eq('period_id',currentPeriod.id);
+      ({data,error}=await q.select('*').single());
     }
     if(error){
       alert('Žádost se nepodařilo odeslat: '+error.message);
@@ -2315,12 +2330,21 @@ async function joinCurrentCompetition(){
   try{
     const payload={
       competition_id:currentComp.id,
+      period_id:currentPeriod?.id||null,
       user_id:currentUser.id,
       active:true,
       credits:isPointsCompetition()?0:10000,
       points:0
     };
-    const{data,error}=await sb.from('competition_players').insert(payload).select('*').single();
+    let{data,error}=await sb.from('competition_players').insert(payload).select('*').single();
+    if(error && String(error.message||'').toLowerCase().includes('duplicate')){
+      let q=sb.from('competition_players')
+        .update({active:true})
+        .eq('competition_id',currentComp.id)
+        .eq('user_id',currentUser.id);
+      if(currentPeriod?.id)q=q.eq('period_id',currentPeriod.id);
+      ({data,error}=await q.select('*').single());
+    }
     if(error){
       alert('Nepodařilo se připojit k soutěži: '+error.message);
       if(btn){btn.disabled=false;btn.textContent='Chci se zapojit →';}
@@ -2328,13 +2352,11 @@ async function joinCurrentCompetition(){
     }
     currentMembership=data||payload;
 
-    // Současný web pořád pracuje u kreditové soutěže s kredity v users.
-    // Proto dostane startovní kredity až při prvním připojení do kreditové soutěže.
     if(!isPointsCompetition() && Number(currentUser.credits||0)<=0){
       const{data:userAfter,error:userErr}=await sb.from('users').update({credits:10000}).eq('id',currentUser.id).select('*').single();
       if(!userErr&&userAfter){
         currentUser=userAfter;
-        localStorage.setItem('tip_user',JSON.stringify(currentUser));
+        localStorage.setItem('tip_user',JSON.stringify({id:currentUser.id}));
       }
     }
 
@@ -2353,10 +2375,13 @@ async function getCompetitionParticipantUserIds(){
   const ids=new Set();
   if(!currentComp)return ids;
   try{
-    const{data,error}=await sb
+    let q=sb
       .from('competition_players')
-      .select('user_id,active')
+      .select('user_id,active,period_id')
       .eq('competition_id',currentComp.id);
+    if(currentPeriod?.id)q=q.eq('period_id',currentPeriod.id);
+
+    const{data,error}=await q;
     if(error){
       membershipTableAvailable=false;
       console.warn('competition_players leaderboard:',error.message||error);
@@ -4505,7 +4530,13 @@ async function renderAdmin(){
   const users=usersResp.data||[];
   const matches=matchesResp.data||[];
   let joinRequests=[];
-  try{const jr=await sb.from('competition_join_requests').select('*').eq('status','pending').order('created_at',{ascending:true}); if(!jr.error)joinRequests=jr.data||[];}catch(e){}
+  try{
+    let jrQuery=sb.from('competition_join_requests').select('*').eq('status','pending').order('created_at',{ascending:true});
+    if(currentComp?.id)jrQuery=jrQuery.eq('competition_id',currentComp.id);
+    if(currentPeriod?.id)jrQuery=jrQuery.eq('period_id',currentPeriod.id);
+    const jr=await jrQuery;
+    if(!jr.error)joinRequests=jr.data||[];
+  }catch(e){}
   const visibleAdminMatches=matches.filter(isMatchTodayOrFuture);
   let html=renderCompetitionPeriodsAdminBox()+`<div class="admin-box"><h3>Nová soutěž</h3>
     <div class="field"><label>Název</label><input type="text" id="compName" placeholder="NHL Playoff 2026"></div>
@@ -4527,7 +4558,7 @@ async function renderAdmin(){
       html+=`<div class="join-request-row">
         <div class="join-request-info">
           <strong>${escapeHTML(u?.username||'Neznámý hráč')}</strong>
-          <span>${escapeHTML(c?.name||'Neznámá soutěž')}</span>
+          <span>${escapeHTML(c?.name||'Neznámá soutěž')} · ${escapeHTML(currentPeriod?.name||'aktuální období')}</span>
         </div>
         <div class="join-request-actions">
           <button class="btn-a btn-g" onclick="decideJoinRequest('${r.id}',true)">✓ Schválit</button>
@@ -4750,12 +4781,26 @@ async function decideJoinRequest(requestId,approve){
   const{data:comp,error:compErr}=await sb.from('competitions').select('*').eq('id',req.competition_id).single();
   if(compErr||!comp){alert('Soutěž se nepodařilo načíst: '+(compErr?.message||''));return;}
   const pointsMode=isPointsCompetition(comp);
-  const payload={competition_id:req.competition_id,user_id:req.user_id,active:true,credits:pointsMode?0:10000,points:0};
+  const periodId=req.period_id||currentPeriod?.id||null;
+  const payload={
+    competition_id:req.competition_id,
+    period_id:periodId,
+    user_id:req.user_id,
+    active:true,
+    credits:pointsMode?0:10000,
+    points:0
+  };
+
   let{error:insErr}=await sb.from('competition_players').insert(payload);
   if(insErr && String(insErr.message||'').toLowerCase().includes('duplicate')){
-    ({error:insErr}=await sb.from('competition_players').update({active:true}).eq('competition_id',req.competition_id).eq('user_id',req.user_id));
+    let q=sb.from('competition_players')
+      .update({active:true})
+      .eq('competition_id',req.competition_id)
+      .eq('user_id',req.user_id);
+    if(periodId)q=q.eq('period_id',periodId);
+    ({error:insErr}=await q);
   }
-  if(insErr){alert('Hráče se nepodařilo přidat do soutěže: '+insErr.message);return;}
+  if(insErr){alert('Hráče se nepodařilo přidat do tohoto období: '+insErr.message);return;}
   await sb.from('competition_join_requests').update({status:'approved',decided_at:new Date().toISOString()}).eq('id',requestId);
 
   if(!pointsMode){
@@ -4766,11 +4811,10 @@ async function decideJoinRequest(requestId,approve){
       }
     }catch(e){}
   }
-  alert('Žádost schválena.');
+  alert('Žádost schválena pro vybrané období.');
   renderAdmin();
   loadTicker();
 }
-
 
 async function createComp(){
   const name=document.getElementById('compName').value.trim();
