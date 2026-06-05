@@ -3369,56 +3369,91 @@ async function addCreditUpdate(username,amount,userId){
   if(!isPointsCompetition())await loadUpdates();
 }
 
-async function settleWinnings(){
-  if(!currentComp)return;
+async function settleWinnings(options={}){
+  if(!currentComp)return {paidUsers:0,paidTotal:0,winningTips:0,changedTips:0,errors:[]};
+
+  const forcePay=!!options.forcePay;
+  const onlyMatchId=options.matchId||null;
+  const errors=[];
   let doneMatchesQuery=sb.from('matches').select('*').eq('competition_id',currentComp.id).eq('status','done');
-  doneMatchesQuery=applyPeriodFilter(doneMatchesQuery);
-  const{data:matches}=await doneMatchesQuery;
-  if(!matches||!matches.length)return;
+  if(onlyMatchId)doneMatchesQuery=doneMatchesQuery.eq('id',onlyMatchId);
+  else doneMatchesQuery=applyPeriodFilter(doneMatchesQuery);
+
+  const{data:matches,error:matchErr}=await doneMatchesQuery;
+  if(matchErr){console.error('settleWinnings matches:',matchErr);return {paidUsers:0,paidTotal:0,winningTips:0,changedTips:0,errors:[matchErr.message]};}
+  if(!matches||!matches.length)return {paidUsers:0,paidTotal:0,winningTips:0,changedTips:0,errors};
 
   const matchIds=matches.map(m=>m.id);
-  const{data:tips}=await sb.from('tips').select('*').in('match_id',matchIds);
-  if(!tips||!tips.length)return;
+  const{data:tips,error:tipsErr}=await sb.from('tips').select('*').in('match_id',matchIds);
+  if(tipsErr){console.error('settleWinnings tips:',tipsErr);return {paidUsers:0,paidTotal:0,winningTips:0,changedTips:0,errors:[tipsErr.message]};}
+  if(!tips||!tips.length)return {paidUsers:0,paidTotal:0,winningTips:0,changedTips:0,errors};
 
-  // Bodové soutěže (např. Mistrovství světa) nepřipisují kredity.
-  // Do tips.winnings ukládáme počet bodů, aby šel jednoduše zobrazit žebříček.
+  let winningTips=0;
+  let changedTips=0;
+
+  // Bodové soutěže nepřipisují kredity. Do tips.winnings ukládáme body.
   if(isPointsCompetition()){
     for(const tip of tips){
       const match=matches.find(m=>m.id===tip.match_id);if(!match)continue;
       const points=evaluatePointsTip(match,tip);if(points===null)continue;
       const currentPoints=Number(tip.winnings||0);
       const update={settled:true,winnings:points};
-      if(!tip.settled||currentPoints!==points)await sb.from('tips').update(update).eq('id',tip.id);
+      if(!tip.settled||currentPoints!==points){
+        const{error}=await sb.from('tips').update(update).eq('id',tip.id);
+        if(error)errors.push(error.message); else changedTips++;
+      }
     }
-    return;
+    return {paidUsers:0,paidTotal:0,winningTips:0,changedTips,errors};
   }
 
-  // Kreditové soutěže: vklad se odečítá už při podání tipu,
-  // takže u výherního tipu se zpět připíše CELÁ výplata = vklad × kurz.
+  // Kreditové soutěže:
+  // vklad se odečítá při podání tipu, takže výherci připisujeme výplatu = vklad × kurz.
   const adjustments={};
   for(const tip of tips){
     const match=matches.find(m=>m.id===tip.match_id);if(!match)continue;
     const result=evaluateTip(match,tip);if(result===null)continue;
     const winnings=result>0?Math.round(result):0;
     const currentWinnings=Number(tip.winnings||0);
+    if(winnings>0)winningTips++;
 
     if(!tip.settled){
       adjustments[tip.user_id]=(adjustments[tip.user_id]||0)+winnings;
-      await sb.from('tips').update({settled:true,winnings}).eq('id',tip.id);
+      const{error}=await sb.from('tips').update({settled:true,winnings}).eq('id',tip.id);
+      if(error)errors.push(error.message); else changedTips++;
     }else if(currentWinnings!==winnings){
       adjustments[tip.user_id]=(adjustments[tip.user_id]||0)+(winnings-currentWinnings);
-      await sb.from('tips').update({winnings}).eq('id',tip.id);
+      const{error}=await sb.from('tips').update({winnings}).eq('id',tip.id);
+      if(error)errors.push(error.message); else changedTips++;
+    }else if(forcePay && winnings>0){
+      // Opravný režim: použij jen když se výhra u už vyhodnoceného zápasu nepřipsala.
+      adjustments[tip.user_id]=(adjustments[tip.user_id]||0)+winnings;
     }
   }
 
   const userIds=Object.keys(adjustments).filter(id=>adjustments[id]!==0);
-  if(!userIds.length)return;
-  const{data:users}=await sb.from('users').select('*').in('id',userIds);
+  if(!userIds.length)return {paidUsers:0,paidTotal:0,winningTips,changedTips,errors};
+
+  const{data:users,error:usersErr}=await sb.from('users').select('id,username,credits').in('id',userIds);
+  if(usersErr){errors.push(usersErr.message);return {paidUsers:0,paidTotal:0,winningTips,changedTips,errors};}
+
+  let paidUsers=0;
+  let paidTotal=0;
   for(const u of users||[]){
-    const nc=Number(u.credits||0)+adjustments[u.id];
-    await sb.from('users').update({credits:nc}).eq('id',u.id);
-    if(currentUser&&u.id===currentUser.id)currentUser.credits=nc;
+    const add=Number(adjustments[u.id]||0);
+    if(!add)continue;
+    const nc=Number(u.credits||0)+add;
+    const{data:updated,error:updateErr}=await sb.from('users').update({credits:nc}).eq('id',u.id).select('id,credits').single();
+    if(updateErr){
+      console.error('credits update failed:',updateErr);
+      errors.push(`${u.username||u.id}: ${updateErr.message}`);
+      continue;
+    }
+    paidUsers++;
+    paidTotal+=add;
+    if(currentUser&&u.id===currentUser.id)currentUser.credits=Number(updated?.credits??nc);
   }
+
+  return {paidUsers,paidTotal,winningTips,changedTips,errors};
 }
 
 function parseJsonMaybe(value,fallback={}){
@@ -4966,14 +5001,50 @@ async function saveResult(mid){
   const ra=parseInt(document.getElementById('ra_'+mid).value);
   const dec=document.getElementById('rd_'+mid).value;
   if(isNaN(rh)||isNaN(ra)){alert('Zadej výsledek.');return;}
-  await sb.from('matches').update({result_home:rh,result_away:ra,decision:dec,status:'done'}).eq('id',mid);
-  await settleWinnings();
-  await updateCreditsDisplay();
-  alert('Výsledek uložen a tipy všech hráčů přepočítány!');renderAdmin();renderMatches();
-}
-</script>
 
-<script id="support-qr-box-v1">
+  const{data:before}=await sb.from('matches').select('id,status').eq('id',mid).single();
+
+  const{error:matchErr}=await sb.from('matches').update({
+    result_home:rh,
+    result_away:ra,
+    decision:dec,
+    status:'done',
+    period_id:currentPeriod?.id||null
+  }).eq('id',mid);
+
+  if(matchErr){alert('Výsledek se nepodařilo uložit: '+matchErr.message);return;}
+
+  const summary=await settleWinnings({matchId:mid});
+  await updateCreditsDisplay();
+
+  if(summary.errors&&summary.errors.length){
+    alert('Výsledek uložen, ale při připisování výher nastala chyba:\n'+summary.errors.join('\n'));
+  }else if(summary.paidUsers>0){
+    alert(`Výsledek uložen. Připsáno ${summary.paidTotal.toLocaleString('cs-CZ')} kr pro ${summary.paidUsers} hráčů.`);
+  }else if(summary.winningTips>0){
+    const force=confirm('Výsledek je uložený a výherní tipy existují, ale teď se nepřipsaly žádné nové kredity.\n\nPokud se výhry hráčům opravdu nepřipsaly, potvrď opravné připsání výher.\n\nPozor: nepotvrzuj, pokud už výhry připsané jsou.');
+    if(force){
+      const repair=await settleWinnings({matchId:mid,forcePay:true});
+      await updateCreditsDisplay();
+      if(repair.errors&&repair.errors.length){
+        alert('Opravné připsání mělo chybu:\n'+repair.errors.join('\n'));
+      }else{
+        alert(`Opravně připsáno ${repair.paidTotal.toLocaleString('cs-CZ')} kr pro ${repair.paidUsers} hráčů.`);
+      }
+    }else{
+      alert('Výsledek uložen. Výhry nebyly znovu připsány.');
+    }
+  }else{
+    alert('Výsledek uložen. Nikdo na tomto zápase nevyhrál.');
+  }
+
+  await renderAdmin();
+  await renderMatches();
+  if(document.getElementById('tab-leaderboard')?.style.display!=='none')await renderLeaderboard();
+  loadTicker();
+  loadUpdates();
+}
+
 function openSupportQr(){
   closeSupportQr();
   const modal=document.createElement('div');
