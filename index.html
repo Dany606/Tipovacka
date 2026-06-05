@@ -4923,6 +4923,140 @@ async function setActivePeriod(id){
   await renderMatches();
 }
 
+
+async function getCurrentCompetitionAdminPlayers(allUsers){
+  const usersList=allUsers||[];
+  const byId={};
+  usersList.forEach(u=>{byId[u.id]=u;});
+
+  if(!currentComp){
+    return usersList.map(u=>({
+      user_id:u.id,
+      username:u.username,
+      credits:Number(u.credits||0),
+      points:0,
+      active:true,
+      membership_id:null
+    }));
+  }
+
+  let rows=[];
+  try{
+    let q=sb.from('competition_players')
+      .select('id,user_id,credits,points,active,period_id')
+      .eq('competition_id',currentComp.id);
+    if(currentPeriod?.id)q=q.eq('period_id',currentPeriod.id);
+    const{data,error}=await q;
+    if(error){
+      console.warn('admin competition players load:',error);
+    }else{
+      rows=(data||[]).filter(r=>r.active!==false);
+    }
+  }catch(e){
+    console.warn('admin competition players load:',e);
+  }
+
+  const mapped=rows
+    .map(r=>{
+      const u=byId[r.user_id];
+      if(!u)return null;
+      return {
+        user_id:r.user_id,
+        username:u.username,
+        credits:Number(r.credits||0),
+        points:Number(r.points||0),
+        active:r.active!==false,
+        membership_id:r.id
+      };
+    })
+    .filter(Boolean);
+
+  // Admin má v aplikaci automatický přístup a je v žebříčku, proto ho ukážeme i tady.
+  if(currentUser?.username===ADMIN_USERNAME && currentUser?.id && !mapped.some(x=>String(x.user_id)===String(currentUser.id))){
+    mapped.push({
+      user_id:currentUser.id,
+      username:currentUser.username,
+      credits:currentCompetitionCreditsValue?currentCompetitionCreditsValue():10000,
+      points:0,
+      active:true,
+      membership_id:currentMembership?.id||null
+    });
+  }
+
+  mapped.sort((a,b)=>String(a.username||'').localeCompare(String(b.username||''),'cs'));
+  return mapped;
+}
+
+async function getCurrentCompetitionPlayerCount(){
+  if(!currentComp)return 0;
+  try{
+    let q=sb.from('competition_players')
+      .select('user_id,active')
+      .eq('competition_id',currentComp.id);
+    if(currentPeriod?.id)q=q.eq('period_id',currentPeriod.id);
+    const{data,error}=await q;
+    if(error)return 0;
+    const ids=new Set();
+    (data||[]).forEach(r=>{if(r.active!==false&&r.user_id)ids.add(r.user_id);});
+    if(currentUser?.username===ADMIN_USERNAME&&currentUser?.id)ids.add(currentUser.id);
+    return ids.size;
+  }catch(e){
+    return 0;
+  }
+}
+
+async function updateCompetitionPlayerCreditsForAdmin(userId,newCredits){
+  if(!currentComp)throw new Error('Není vybraná soutěž.');
+  newCredits=Number(newCredits)||0;
+
+  let q=sb.from('competition_players')
+    .select('*')
+    .eq('competition_id',currentComp.id)
+    .eq('user_id',userId);
+  if(currentPeriod?.id)q=q.eq('period_id',currentPeriod.id);
+
+  let{data:mem,error:loadErr}=await q.maybeSingle();
+  if(loadErr)throw loadErr;
+
+  if(!mem){
+    // Admin je automatický účastník; když ještě nemá řádek, vytvoříme ho.
+    if(currentUser?.username===ADMIN_USERNAME && String(userId)===String(currentUser.id)){
+      const payload={
+        competition_id:currentComp.id,
+        period_id:currentPeriod?.id||null,
+        user_id:userId,
+        active:true,
+        credits:newCredits,
+        points:0
+      };
+      const ins=await sb.from('competition_players').insert(payload).select('*').single();
+      if(ins.error)throw ins.error;
+      mem=ins.data;
+      currentMembership=mem;
+      return mem;
+    }
+    throw new Error('Hráč není schválený v této soutěži / období.');
+  }
+
+  const{data,error}=await sb.from('competition_players')
+    .update({credits:newCredits})
+    .eq('id',mem.id)
+    .select('*')
+    .single();
+  if(error)throw error;
+
+  if(currentUser&&String(userId)===String(currentUser.id))currentMembership=data;
+
+  // Dočasná pojistka pro starou NHL, kde se ještě někde může číst users.credits.
+  if(typeof isLegacyGlobalCreditsCompetition==='function' && isLegacyGlobalCreditsCompetition(currentComp)){
+    try{await sb.from('users').update({credits:newCredits}).eq('id',userId);}catch(e){}
+    if(currentUser&&String(userId)===String(currentUser.id))currentUser.credits=newCredits;
+  }
+
+  return data;
+}
+
+
 async function renderAdmin(){
   if(currentUser.username!==ADMIN_USERNAME)return;
   await loadSupportBoxSetting();
@@ -4990,9 +5124,11 @@ async function renderAdmin(){
   html+=renderDefaultCompetitionAdminBox(comps);
   html+=renderRulesUpdatesAdminBox();
 
-  const userOptions=(users||[]).map(u=>`<option value="${u.id}">${u.username} · ${(Number(u.credits)||0).toLocaleString('cs-CZ')} kr</option>`).join('');
+  const adminCreditPlayers=await getCurrentCompetitionAdminPlayers(users);
+  const userOptions=(adminCreditPlayers||[]).map(u=>`<option value="${u.user_id}">${escapeHTML(u.username)} · ${Number(u.credits||0).toLocaleString('cs-CZ')} kr</option>`).join('');
   html+=`<div class="admin-box"><h3>Upravit kredity hráče</h3>
-    <div class="field"><label>Hráč</label><select id="creditUser">${userOptions||'<option value="">Žádní hráči</option>'}</select></div>
+    <div style="color:var(--text3);font-size:12px;margin-bottom:10px;line-height:1.4">Zobrazuji jen hráče schválené v aktuální soutěži a období. Úprava kreditů se uloží pouze pro: <strong>${escapeHTML(currentComp?.name||'aktuální soutěž')}</strong> · <strong>${escapeHTML(currentPeriod?.name||'aktuální období')}</strong>.</div>
+    <div class="field"><label>Hráč</label><select id="creditUser">${userOptions||'<option value="">V tomto období nejsou žádní hráči</option>'}</select></div>
     <div class="field"><label>Akce</label><select id="creditMode"><option value="add">Přidat kredity</option><option value="sub">Odebrat kredity</option><option value="set">Nastavit přesnou hodnotu</option></select></div>
     <div class="field"><label>Částka</label><input type="number" id="creditAmount" min="0" step="1" placeholder="Např. 5000"></div>
     <button class="btn-a btn-g" onclick="adjustUserCredits()" style="width:100%">Uložit úpravu kreditů</button>
@@ -5141,16 +5277,30 @@ async function renderAdmin(){
 
 async function adjustUserCredits(){
   if(!currentUser||currentUser.username!==ADMIN_USERNAME){alert('Tahle akce je jen pro admina.');return;}
+  if(!currentComp){alert('Nejdřív vyber soutěž.');return;}
+
   const userId=document.getElementById('creditUser')?.value;
   const mode=document.getElementById('creditMode')?.value;
   const amount=parseInt(document.getElementById('creditAmount')?.value,10);
-  if(!userId){alert('Vyber hráče.');return;}
+  if(!userId){alert('Vyber hráče z aktuální soutěže / období.');return;}
   if(isNaN(amount)||amount<0){alert('Zadej platnou částku.');return;}
 
-  const{data:user,error:loadErr}=await sb.from('users').select('id,username,credits').eq('id',userId).single();
-  if(loadErr||!user){alert('Hráče se nepodařilo načíst.');return;}
+  const players=await getCurrentCompetitionAdminPlayers([]);
+  let currentCredits=0;
+  const selected=players.find(p=>String(p.user_id)===String(userId));
+  if(selected)currentCredits=Number(selected.credits||0);
+  else{
+    let q=sb.from('competition_players')
+      .select('credits')
+      .eq('competition_id',currentComp.id)
+      .eq('user_id',userId);
+    if(currentPeriod?.id)q=q.eq('period_id',currentPeriod.id);
+    const{data:mem}=await q.maybeSingle();
+    if(mem)currentCredits=Number(mem.credits||0);
+    else if(currentUser?.username===ADMIN_USERNAME&&String(userId)===String(currentUser.id))currentCredits=currentCompetitionCreditsValue();
+    else{alert('Tenhle hráč není schválený v aktuální soutěži / období.');return;}
+  }
 
-  const currentCredits=Number(user.credits)||0;
   let newCredits=currentCredits;
   if(mode==='add')newCredits=currentCredits+amount;
   else if(mode==='sub')newCredits=currentCredits-amount;
@@ -5159,26 +5309,34 @@ async function adjustUserCredits(){
 
   if(newCredits<0){alert('Kredity nemůžou být pod nulou. Zadej menší částku nebo nastav přesnou hodnotu.');return;}
 
+  const userName=selected?.username||'hráč';
   const actionText=mode==='add'?'přidat':mode==='sub'?'odebrat':'nastavit na';
-  if(!confirm(`${user.username}: ${currentCredits.toLocaleString('cs-CZ')} kr → ${newCredits.toLocaleString('cs-CZ')} kr\n\nOpravdu chceš ${actionText} ${amount.toLocaleString('cs-CZ')} kr?`))return;
+  if(!confirm(`${userName}: ${currentCredits.toLocaleString('cs-CZ')} kr → ${newCredits.toLocaleString('cs-CZ')} kr\n\nSoutěž: ${currentComp.name}\nObdobí: ${currentPeriod?.name||'aktuální'}\n\nOpravdu chceš ${actionText} ${amount.toLocaleString('cs-CZ')} kr?`))return;
 
-  const{error}=await sb.from('users').update({credits:newCredits}).eq('id',userId);
-  if(error){alert('Kredity se nepodařilo uložit.');return;}
+  try{
+    await updateCompetitionPlayerCreditsForAdmin(userId,newCredits);
+  }catch(e){
+    alert('Kredity se nepodařilo upravit: '+(e.message||e));
+    return;
+  }
 
-  if(currentUser&&currentUser.id===userId){currentUser.credits=newCredits;await updateCreditsDisplay();}
+  if(mode==='add'&&amount>0){
+    try{
+      await addCreditUpdate(userName,amount,userId);
+    }catch(e){
+      console.warn('credit update log failed:',e);
+    }
+  }
 
-  // Aktualizaci bereme podle skutečného navýšení kreditů, ne jen podle volby "Přidat".
-  // Díky tomu se záznam zobrazí i tehdy, když admin použije "Nastavit přesnou hodnotu"
-  // například z 0 kr na 5 000 kr.
-  const purchasedAmount=newCredits-currentCredits;
-  if(purchasedAmount>0)await addCreditUpdate(user.username,purchasedAmount,userId);
-
-  alert('Kredity upraveny.');
-  renderAdmin();
-  renderLeaderboard();
+  document.getElementById('creditAmount').value='';
+  await updateCreditsDisplay();
+  await renderAdmin();
+  await renderLeaderboard();
+  await loadUpdates();
   loadTicker();
-  loadUpdates();
+  alert('Kredity upraveny jen pro aktuální soutěž / období.');
 }
+
 
 function setCompetitionPreset(){
   const league=document.getElementById('compLeague')?.value||'';
@@ -5852,7 +6010,9 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
     const stats={today:0,requests:0,unsettled:0,soon:[],noOdds:[],waiting:[]};
     try{
       if(currentComp){
-        const {data:matches}=await sb.from('matches').select('*').eq('competition_id',currentComp.id);
+        let statsMatchQuery=sb.from('matches').select('*').eq('competition_id',currentComp.id);
+        statsMatchQuery=applyPeriodFilter(statsMatchQuery);
+        const {data:matches}=await statsMatchQuery;
         const now=Date.now();
         (matches||[]).forEach(m=>{
           const d=parseAdminDate(m.match_date);
@@ -5869,7 +6029,10 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
         });
       }
       try{
-        const {data:req}=await sb.from('competition_join_requests').select('id').eq('status','pending');
+        let reqQ=sb.from('competition_join_requests').select('id').eq('status','pending');
+        if(currentComp?.id)reqQ=reqQ.eq('competition_id',currentComp.id);
+        if(currentPeriod?.id)reqQ=reqQ.eq('period_id',currentPeriod.id);
+        const {data:req}=await reqQ;
         stats.requests=(req||[]).length;
       }catch(e){}
     }catch(e){}
@@ -6114,13 +6277,15 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
         });
       }
       try{
-        const {data:req}=await sb.from('competition_join_requests').select('id').eq('status','pending');
+        let reqQ=sb.from('competition_join_requests').select('id').eq('status','pending');
+        if(currentComp?.id)reqQ=reqQ.eq('competition_id',currentComp.id);
+        if(currentPeriod?.id)reqQ=reqQ.eq('period_id',currentPeriod.id);
+        const {data:req}=await reqQ;
         counts.requests=(req||[]).length;
         counts.todayImportant+=counts.requests;
       }catch(e){}
       try{
-        const {data:u}=await sb.from('users').select('id');
-        counts.players=(u||[]).length;
+        counts.players=await getCurrentCompetitionPlayerCount();
       }catch(e){}
     }catch(e){}
     return counts;
