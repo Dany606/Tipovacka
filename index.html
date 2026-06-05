@@ -2012,19 +2012,47 @@ async function getCurrentUserPoints(){
 }
 
 
+
+function isLegacyGlobalCreditsCompetition(comp=currentComp){
+  const s=String((comp?.league||'')+' '+(comp?.name||'')).toLowerCase();
+  // NHL / starší veřejné kreditové soutěže už měly reálný stav v users.credits.
+  // Nové soukromé soutěže a nová období mají jet čistě přes competition_players.credits.
+  return !isPrivateCompetition(comp) && (s.includes('nhl') || s.includes('extraliga') || s.includes('česká extraliga'));
+}
+
+function effectiveCompetitionCreditsForUser(user,membershipCredits,tipCount=0){
+  const mem=Number(membershipCredits);
+  const userCredits=Number(user?.credits||0);
+
+  // Když má starší NHL soutěž membership kredity defaultně 10 000,
+  // ale hráč už v té soutěži má tipy a users.credits má reálný stav,
+  // použijeme starý správný stav z users.credits.
+  if(isLegacyGlobalCreditsCompetition() && tipCount>0 && mem===10000 && userCredits!==10000){
+    return userCredits;
+  }
+
+  if(Number.isFinite(mem))return mem;
+  return user?.username===ADMIN_USERNAME?10000:0;
+}
+
+
 function currentCompetitionCreditsValue(){
   if(isPointsCompetition())return 0;
 
-  // Kredity už nesmí být globální z users.credits.
-  // Pro každou soutěž/období se berou z competition_players.credits.
   if(currentMembership && currentMembership.active!==false){
-    return Number(currentMembership.credits||0);
+    const memCredits=Number(currentMembership.credits||0);
+    const userCredits=Number(currentUser?.credits||0);
+
+    // Oprava starší NHL: po zavedení kreditů po soutěžích se staré membership řádky
+    // naplnily defaultem 10 000, ale reálný stav zůstal v users.credits.
+    if(isLegacyGlobalCreditsCompetition() && memCredits===10000 && userCredits!==10000){
+      return userCredits;
+    }
+
+    return memCredits;
   }
 
-  // Admin má automatický přístup i bez záznamu v competition_players.
-  // V nové soutěži proto začíná čistě na 10 000 kr, ne s kredity z jiné soutěže.
   if(currentUser?.username===ADMIN_USERNAME)return 10000;
-
   return 0;
 }
 
@@ -3398,7 +3426,7 @@ async function loadTicker(){
 
         sorted=(users||[])
           .filter(u=>participantIds.has(u.id))
-          .map(u=>({...u,_competitionCredits:Number(creditsByUser[u.id]||0)}))
+          .map(u=>({...u,_competitionCredits:effectiveCompetitionCreditsForUser(u,creditsByUser[u.id],0)}))
           .sort((a,b)=>b._competitionCredits-a._competitionCredits);
       }
     }else{
@@ -4593,7 +4621,11 @@ async function renderLeaderboard(){
     // V žebříčku musí být skutečný aktuální stav kreditů z tabulky users.
     // Původní výpočet START - sázky + výhry ignoroval ruční úpravy / nákupy kreditů
     // a u hráčů pak ukazoval nesmyslné hodnoty, třeba záporné kredity.
-    const actualCredits=Number(membershipCreditsByUser[u.id]!==undefined?membershipCreditsByUser[u.id]:0)||0;
+    const actualCredits=effectiveCompetitionCreditsForUser(
+      u,
+      membershipCreditsByUser[u.id]!==undefined?membershipCreditsByUser[u.id]:undefined,
+      mt.length
+    );
     const roi=((actualCredits-START_CREDITS)/START_CREDITS*100);
     const profit=actualCredits-START_CREDITS;
     return{id:u.id,name:u.username,credits:actualCredits,tipCount:mt.length,settledCount:settled.length,pending,pendingTips,roi,profit};
