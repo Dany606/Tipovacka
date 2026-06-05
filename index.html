@@ -3204,22 +3204,70 @@ function switchTab(name,btn){
 async function loadTicker(){
   try{
     const{data:users}=await sb.from('users').select('*');
+
     let doneQuery=sb.from('matches').select('*').eq('status','done').order('match_date',{ascending:false});
     if(currentComp)doneQuery=doneQuery.eq('competition_id',currentComp.id);
     doneQuery=applyPeriodFilter(doneQuery);
     const{data:doneMatches}=await doneQuery;
-    let sorted=(users||[]).sort((a,b)=>b.credits-a.credits);
-    if(currentComp){const participantIds=await getCompetitionParticipantUserIds();sorted=sorted.filter(u=>participantIds.has(u.id));}
-    if(isPointsCompetition()&&currentComp){
-      let tickerCompMatchesQuery=sb.from('matches').select('id').eq('competition_id',currentComp.id);
-      tickerCompMatchesQuery=applyPeriodFilter(tickerCompMatchesQuery);
-      const{data:compMatches}=await tickerCompMatchesQuery;
-      const compIds=(compMatches||[]).map(m=>m.id);
-      const{data:allSettledTips}=compIds.length?await sb.from('tips').select('user_id,winnings,settled').eq('settled',true).in('match_id',compIds):{data:[]};
-      const pts={};
-      (allSettledTips||[]).forEach(t=>{pts[t.user_id]=(pts[t.user_id]||0)+(Number(t.winnings)||0);});
-      sorted=(users||[]).map(u=>({...u,_points:pts[u.id]||0})).sort((a,b)=>b._points-a._points);
+
+    let sorted=[];
+    const tickerPointsMode=isPointsCompetition();
+
+    if(currentComp){
+      const participantIds=await getCompetitionParticipantUserIds();
+
+      if(tickerPointsMode){
+        let tickerCompMatchesQuery=sb.from('matches').select('id').eq('competition_id',currentComp.id);
+        tickerCompMatchesQuery=applyPeriodFilter(tickerCompMatchesQuery);
+        const{data:compMatches}=await tickerCompMatchesQuery;
+        const compIds=(compMatches||[]).map(m=>m.id);
+        const{data:allSettledTips}=compIds.length
+          ? await sb.from('tips').select('user_id,winnings,settled').eq('settled',true).in('match_id',compIds)
+          : {data:[]};
+
+        const pts={};
+        (allSettledTips||[]).forEach(t=>{pts[t.user_id]=(pts[t.user_id]||0)+(Number(t.winnings)||0);});
+
+        sorted=(users||[])
+          .filter(u=>participantIds.has(u.id))
+          .map(u=>({...u,_points:pts[u.id]||0}))
+          .sort((a,b)=>b._points-a._points);
+      }else{
+        // Kreditová soutěž: ticker musí používat kredity z aktuální soutěže/období,
+        // ne globální users.credits. Jinak ukazoval staré kredity z jiné soutěže.
+        let memRows=[];
+        try{
+          let memQ=sb.from('competition_players')
+            .select('user_id,credits,active,period_id')
+            .eq('competition_id',currentComp.id);
+          if(currentPeriod?.id)memQ=memQ.eq('period_id',currentPeriod.id);
+          const memResp=await memQ;
+          if(!memResp.error)memRows=memResp.data||[];
+        }catch(e){
+          console.warn('ticker memberships:',e);
+        }
+
+        const creditsByUser={};
+        (memRows||[]).forEach(r=>{
+          if(r.active!==false&&r.user_id)creditsByUser[r.user_id]=Number(r.credits||0);
+        });
+
+        // Admin se v každém období zobrazuje automaticky; pokud ještě nemá řádek,
+        // bereme čistý start 10 000 kr.
+        if(currentUser?.username===ADMIN_USERNAME && currentUser?.id && creditsByUser[currentUser.id]===undefined){
+          creditsByUser[currentUser.id]=10000;
+          participantIds.add(currentUser.id);
+        }
+
+        sorted=(users||[])
+          .filter(u=>participantIds.has(u.id))
+          .map(u=>({...u,_competitionCredits:Number(creditsByUser[u.id]||0)}))
+          .sort((a,b)=>b._competitionCredits-a._competitionCredits);
+      }
+    }else{
+      sorted=(users||[]).sort((a,b)=>b.credits-a.credits);
     }
+
     const leader=sorted[0];
     const second=sorted[1];
 
@@ -3234,19 +3282,18 @@ async function loadTicker(){
     if(lastMatch){
       const{data:lastTips}=await sb.from('tips').select('*').eq('match_id',lastMatch.id).eq('settled',true);
       if(lastTips&&lastTips.length>0){
-        // Největší výhra posledního zápasu
         const won=lastTips.filter(t=>t.winnings>0);
         if(won.length>0){
           lastWin=won.reduce((a,b)=>b.winnings>a.winnings?b:a,won[0]);
           lastWinUser=(users||[]).find(u=>u.id===lastWin.user_id);
         }
-        // Největší prohra posledního zápasu
+
         const lost=lastTips.filter(t=>t.winnings===0);
         if(lost.length>0){
           lastLoss=lost.reduce((a,b)=>b.stake>a.stake?b:a,lost[0]);
           lastLossUser=(users||[]).find(u=>u.id===lastLoss.user_id);
         }
-        // Největší kurz posledního zápasu
+
         const withOdds=won.map(t=>({...t,odds:t.stake>0?t.winnings/t.stake:0}));
         if(withOdds.length>0){
           const top=withOdds.reduce((a,b)=>b.odds>a.odds?b:a,withOdds[0]);
@@ -3255,21 +3302,29 @@ async function loadTicker(){
       }
     }
 
-    let items='';
-    const tickerPointsMode=isPointsCompetition();
-    if(leader) items+=`<span class="t-item">🏆 <span class="lbl">Lídr žebříčku:</span> <strong>${leader.username}</strong> <span class="hi">${tickerPointsMode?Math.round(leader._points||0).toLocaleString('cs-CZ')+' bodů':leader.credits.toLocaleString('cs-CZ')+' kr'}</span></span><span class="t-div">·</span>`;
-    if(second) items+=`<span class="t-item">🥈 <strong>${second.username}</strong> ${tickerPointsMode?Math.round(second._points||0).toLocaleString('cs-CZ')+' bodů':second.credits.toLocaleString('cs-CZ')+' kr'}</span><span class="t-div">·</span>`;
-    if(lastMatch) items+=`<span class="t-item">🏒 <span class="lbl">Poslední zápas:</span> <strong>${lastMatch.home} – ${lastMatch.away}</strong> ${lastMatch.result_home}:${lastMatch.result_away}</span><span class="t-div">·</span>`;
-    if(lastWin) items+=`<span class="t-item">💰 <span class="lbl">${tickerPointsMode?'Body kola':'Výhra kola'}:</span> <strong>${lastWinUser?.username||'–'}</strong> <span class="pos">+${Number(lastWin.winnings||0).toLocaleString('cs-CZ')} ${tickerPointsMode?'bodů':'kr'}</span></span><span class="t-div">·</span>`;
-    if(lastBigOdds&&lastBigOdds.odds>1.3) items+=`<span class="t-item">🎯 <span class="lbl">Kurz kola:</span> <strong>${lastBigOddsUser?.username||'–'}</strong> <span class="hi">${lastBigOdds.odds.toFixed(2)}×</span></span><span class="t-div">·</span>`;
-    if(lastLoss&&lastLoss.stake>100) items+=`<span class="t-item">📉 <span class="lbl">Prohra kola:</span> <strong>${lastLossUser?.username||'–'}</strong> <span class="neg">−${lastLoss.stake.toLocaleString('cs-CZ')} kr</span></span><span class="t-div">·</span>`;
+    const valueText=(u)=>{
+      if(!u)return '';
+      if(tickerPointsMode)return Math.round(u._points||0).toLocaleString('cs-CZ')+' bodů';
+      return Number(u._competitionCredits??u.credits??0).toLocaleString('cs-CZ')+' kr';
+    };
 
-    if(!items) return;
+    let items='';
+    if(leader) items+=`<span class="t-item">🏆 <span class="lbl">Lídr žebříčku:</span> <strong>${escapeHTML(leader.username)}</strong> <span class="hi">${valueText(leader)}</span></span><span class="t-div">·</span>`;
+    if(second) items+=`<span class="t-item">🥈 <strong>${escapeHTML(second.username)}</strong> ${valueText(second)}</span><span class="t-div">·</span>`;
+    if(lastMatch) items+=`<span class="t-item">🏒 <span class="lbl">Poslední zápas:</span> <strong>${escapeHTML(lastMatch.home)} – ${escapeHTML(lastMatch.away)}</strong> ${escapeHTML(lastMatch.result_home)}:${escapeHTML(lastMatch.result_away)}</span><span class="t-div">·</span>`;
+    if(lastWin) items+=`<span class="t-item">💰 <span class="lbl">${tickerPointsMode?'Body kola':'Výhra kola'}:</span> <strong>${escapeHTML(lastWinUser?.username||'–')}</strong> <span class="pos">+${Number(lastWin.winnings||0).toLocaleString('cs-CZ')} ${tickerPointsMode?'bodů':'kr'}</span></span><span class="t-div">·</span>`;
+    if(lastBigOdds&&lastBigOdds.odds>1.3) items+=`<span class="t-item">🎯 <span class="lbl">Kurz kola:</span> <strong>${escapeHTML(lastBigOddsUser?.username||'–')}</strong> <span class="hi">${lastBigOdds.odds.toFixed(2)}×</span></span><span class="t-div">·</span>`;
+    if(lastLoss&&lastLoss.stake>100) items+=`<span class="t-item">📉 <span class="lbl">Prohra kola:</span> <strong>${escapeHTML(lastLossUser?.username||'–')}</strong> <span class="neg">−${Number(lastLoss.stake||0).toLocaleString('cs-CZ')} kr</span></span><span class="t-div">·</span>`;
+
+    if(!items){
+      document.getElementById('tickerBar').style.display='none';
+      return;
+    }
+
     document.getElementById('tickerTrack').innerHTML=items+items;
     document.getElementById('tickerBar').style.display='block';
   }catch(e){console.warn('ticker:',e);}
 }
-
 
 function escapeHTML(str){
   return String(str??'').replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
