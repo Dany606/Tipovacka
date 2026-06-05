@@ -3668,6 +3668,17 @@ function renderUpdates(items){
 async function loadUpdates(){
   const box=document.getElementById('updatesBox');
 
+  // Soukromá soutěž / období:
+  // Aktualizace nesmí vidět všichni. Uvidí je jen admin nebo hráč,
+  // který je pro dané období schválený v competition_players.
+  if(currentComp && isPrivateCompetition(currentComp)){
+    const approved = currentUser?.username===ADMIN_USERNAME || (currentMembership && currentMembership.active!==false);
+    if(!approved){
+      if(box)box.style.display='none';
+      return;
+    }
+  }
+
   let rows=isPointsCompetition()?[]:localCreditUpdates();
 
   try{
@@ -3684,6 +3695,7 @@ async function loadUpdates(){
 
   renderUpdates(rows);
 }
+
 async function insertCreditUpdateToSupabase(item){
   const amountText=Number(item.amount||0).toLocaleString('cs-CZ');
   const playerName=item.username||item.player_name||'hráč';
