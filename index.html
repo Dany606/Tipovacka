@@ -1883,6 +1883,83 @@ async function getCurrentUserPoints(){
   return (tips||[]).reduce((sum,t)=>sum+(Number(t.winnings)||0),0);
 }
 
+
+function currentCompetitionCreditsValue(){
+  if(isPointsCompetition())return 0;
+
+  // Kredity už nesmí být globální z users.credits.
+  // Pro každou soutěž/období se berou z competition_players.credits.
+  if(currentMembership && currentMembership.active!==false){
+    return Number(currentMembership.credits||0);
+  }
+
+  // Admin má automatický přístup i bez záznamu v competition_players.
+  // V nové soutěži proto začíná čistě na 10 000 kr, ne s kredity z jiné soutěže.
+  if(currentUser?.username===ADMIN_USERNAME)return 10000;
+
+  return 0;
+}
+
+async function updateCurrentCompetitionCredits(newCredits){
+  newCredits=Number(newCredits)||0;
+
+  // Primárně ukládáme kredity do účasti v konkrétním období.
+  if(currentMembership?.id){
+    const{data,error}=await sb
+      .from('competition_players')
+      .update({credits:newCredits})
+      .eq('id',currentMembership.id)
+      .select('*')
+      .single();
+
+    if(error)throw error;
+    if(data)currentMembership=data;
+    return data;
+  }
+
+  // Pokud admin ještě nemá membership řádek, vytvoří se automaticky pro aktuální období.
+  // Díky tomu se jeho kredity taky vedou samostatně za každou soutěž / období.
+  if(currentUser?.username===ADMIN_USERNAME && currentComp?.id){
+    const payload={
+      competition_id:currentComp.id,
+      period_id:currentPeriod?.id||null,
+      user_id:currentUser.id,
+      active:true,
+      credits:newCredits,
+      points:0
+    };
+
+    let{data,error}=await sb.from('competition_players').insert(payload).select('*').single();
+
+    if(error && String(error.message||'').toLowerCase().includes('duplicate')){
+      let q=sb.from('competition_players')
+        .update({active:true,credits:newCredits})
+        .eq('competition_id',currentComp.id)
+        .eq('user_id',currentUser.id);
+      if(currentPeriod?.id)q=q.eq('period_id',currentPeriod.id);
+      ({data,error}=await q.select('*').single());
+    }
+
+    if(error)throw error;
+    if(data)currentMembership=data;
+    return data;
+  }
+
+  return null;
+}
+
+async function ensureAdminCompetitionMembership(){
+  if(!currentUser||currentUser.username!==ADMIN_USERNAME||!currentComp||isPointsCompetition())return;
+  if(currentMembership&&currentMembership.active!==false)return;
+
+  try{
+    await updateCurrentCompetitionCredits(10000);
+  }catch(e){
+    console.warn('admin competition membership create failed:',e);
+  }
+}
+
+
 async function updateCreditsDisplay(){
   const el=document.getElementById('topCredits');
   if(!el||!currentUser)return;
@@ -1896,9 +1973,11 @@ async function updateCreditsDisplay(){
     }
     return;
   }
-  el.textContent=currentUser.credits.toLocaleString('cs-CZ')+' kr';
-}
 
+  if(currentUser.username===ADMIN_USERNAME)await ensureAdminCompetitionMembership();
+
+  el.textContent=currentCompetitionCreditsValue().toLocaleString('cs-CZ')+' kr';
+}
 
 async function loadDefaultCompetitionSetting(){
   defaultCompetitionId=null;
@@ -2355,14 +2434,6 @@ async function joinCurrentCompetition(){
       return;
     }
     currentMembership=data||payload;
-
-    if(!isPointsCompetition() && Number(currentUser.credits||0)<=0){
-      const{data:userAfter,error:userErr}=await sb.from('users').update({credits:10000}).eq('id',currentUser.id).select('*').single();
-      if(!userErr&&userAfter){
-        currentUser=userAfter;
-        localStorage.setItem('tip_user',JSON.stringify({id:currentUser.id}));
-      }
-    }
 
     await updateCreditsDisplay();
     renderRules();
@@ -3480,24 +3551,49 @@ async function settleWinnings(options={}){
   const userIds=Object.keys(adjustments).filter(id=>adjustments[id]!==0);
   if(!userIds.length)return {paidUsers:0,paidTotal:0,winningTips,changedTips,errors};
 
-  const{data:users,error:usersErr}=await sb.from('users').select('id,username,credits').in('id',userIds);
-  if(usersErr){errors.push(usersErr.message);return {paidUsers:0,paidTotal:0,winningTips,changedTips,errors};}
+  const{data:members,error:membersErr}=await sb
+    .from('competition_players')
+    .select('id,user_id,credits,active')
+    .eq('competition_id',currentComp.id)
+    .in('user_id',userIds)
+    .eq('period_id',currentPeriod?.id||null);
+
+  if(membersErr){errors.push(membersErr.message);return {paidUsers:0,paidTotal:0,winningTips,changedTips,errors};}
 
   let paidUsers=0;
   let paidTotal=0;
-  for(const u of users||[]){
-    const add=Number(adjustments[u.id]||0);
+  for(const userId of userIds){
+    const add=Number(adjustments[userId]||0);
     if(!add)continue;
-    const nc=Number(u.credits||0)+add;
-    const{data:updated,error:updateErr}=await sb.from('users').update({credits:nc}).eq('id',u.id).select('id,credits').single();
+
+    let mem=(members||[]).find(m=>String(m.user_id)===String(userId));
+    if(!mem){
+      const payload={
+        competition_id:currentComp.id,
+        period_id:currentPeriod?.id||null,
+        user_id:userId,
+        active:true,
+        credits:10000,
+        points:0
+      };
+      const ins=await sb.from('competition_players').insert(payload).select('*').single();
+      if(ins.error){
+        errors.push(`${userId}: ${ins.error.message}`);
+        continue;
+      }
+      mem=ins.data;
+    }
+
+    const nc=Number(mem.credits||0)+add;
+    const{data:updated,error:updateErr}=await sb.from('competition_players').update({credits:nc}).eq('id',mem.id).select('*').single();
     if(updateErr){
-      console.error('credits update failed:',updateErr);
-      errors.push(`${u.username||u.id}: ${updateErr.message}`);
+      console.error('competition credits update failed:',updateErr);
+      errors.push(`${userId}: ${updateErr.message}`);
       continue;
     }
     paidUsers++;
     paidTotal+=add;
-    if(currentUser&&u.id===currentUser.id)currentUser.credits=Number(updated?.credits??nc);
+    if(currentUser&&String(userId)===String(currentUser.id))currentMembership=updated;
   }
 
   return {paidUsers,paidTotal,winningTips,changedTips,errors};
@@ -4031,9 +4127,10 @@ async function placeTip(mid){
 
   const stake=parseInt(document.getElementById('st_'+mid)?.value||0);
   if(!stake||stake<100){alert('Minimální sázka je 100 kreditů.');btn.disabled=false;btn.textContent=existing?'✓ Aktualizovat tip':'Potvrdit tip →';return;}
-  if(stake>currentUser.credits){alert('Nedostatek kreditů!');btn.disabled=false;btn.textContent=existing?'✓ Aktualizovat tip':'Potvrdit tip →';return;}
+  const availableCredits=currentCompetitionCreditsValue();
+  if(stake>availableCredits){alert('Nedostatek kreditů!');btn.disabled=false;btn.textContent=existing?'✓ Aktualizovat tip':'Potvrdit tip →';return;}
   const p=pending[mid]||{};
-  let nc=currentUser.credits;
+  let nc=availableCredits;
   if(existing)nc+=Number(existing.stake||0);
   nc-=stake;
   let outcome=null,decision=null;
@@ -4075,8 +4172,12 @@ async function placeTip(mid){
   const tipData={user_id:currentUser.id,match_id:mid,outcome,decision,goals:null,score_home:null,score_away:null,stake,settled:false,winnings:0};
   if(existing){await sb.from('tips').update(tipData).eq('id',existing.id);const idx=allTips.findIndex(t=>t.match_id===mid);allTips[idx]={...existing,...tipData};}
   else{const{data}=await sb.from('tips').insert(tipData).select().single();if(data)allTips.push(data);}
-  await sb.from('users').update({credits:nc}).eq('id',currentUser.id);
-  currentUser.credits=nc;await updateCreditsDisplay();
+  try{
+    await updateCurrentCompetitionCredits(nc);
+  }catch(e){
+    alert('Tip se uložil, ale kredity se nepodařilo upravit: '+(e.message||e));
+  }
+  await updateCreditsDisplay();
   btn.disabled=false;btn.textContent='✓ Uloženo!';
   setTimeout(()=>{btn.textContent='✓ Aktualizovat tip';btn.disabled=false;},2000);
 }
@@ -4254,6 +4355,28 @@ async function renderLeaderboard(){
   }
 
   const{data:tips}=await sb.from('tips').select('*');
+
+  // Kredity pro žebříček bereme z competition_players pro aktuální soutěž/období,
+  // ne z globálního users.credits.
+  let leaderboardMembershipRows=[];
+  try{
+    let memQ=sb.from('competition_players')
+      .select('user_id,credits,active,period_id')
+      .eq('competition_id',currentComp.id);
+    if(currentPeriod?.id)memQ=memQ.eq('period_id',currentPeriod.id);
+    const memResp=await memQ;
+    if(!memResp.error)leaderboardMembershipRows=memResp.data||[];
+  }catch(e){
+    console.warn('leaderboard memberships:',e);
+  }
+  const membershipCreditsByUser={};
+  (leaderboardMembershipRows||[]).forEach(r=>{
+    if(r.active!==false&&r.user_id)membershipCreditsByUser[r.user_id]=Number(r.credits||0);
+  });
+  if(currentUser?.username===ADMIN_USERNAME && currentUser?.id && membershipCreditsByUser[currentUser.id]===undefined){
+    membershipCreditsByUser[currentUser.id]=10000;
+  }
+
   let compMatches=[];
   let compMatchIds=[];
   const matchById={};
@@ -4278,7 +4401,7 @@ async function renderLeaderboard(){
     // V žebříčku musí být skutečný aktuální stav kreditů z tabulky users.
     // Původní výpočet START - sázky + výhry ignoroval ruční úpravy / nákupy kreditů
     // a u hráčů pak ukazoval nesmyslné hodnoty, třeba záporné kredity.
-    const actualCredits=Number(u.credits)||0;
+    const actualCredits=Number(membershipCreditsByUser[u.id]!==undefined?membershipCreditsByUser[u.id]:0)||0;
     const roi=((actualCredits-START_CREDITS)/START_CREDITS*100);
     const profit=actualCredits-START_CREDITS;
     return{id:u.id,name:u.username,credits:actualCredits,tipCount:mt.length,settledCount:settled.length,pending,pendingTips,roi,profit};
@@ -4825,14 +4948,6 @@ async function decideJoinRequest(requestId,approve){
   if(insErr){alert('Hráče se nepodařilo přidat do tohoto období: '+insErr.message);return;}
   await sb.from('competition_join_requests').update({status:'approved',decided_at:new Date().toISOString()}).eq('id',requestId);
 
-  if(!pointsMode){
-    try{
-      const{data:u}=await sb.from('users').select('credits').eq('id',req.user_id).single();
-      if(u && Number(u.credits||0)<=0){
-        await sb.from('users').update({credits:10000}).eq('id',req.user_id);
-      }
-    }catch(e){}
-  }
   alert('Žádost schválena pro vybrané období.');
   renderAdmin();
   loadTicker();
