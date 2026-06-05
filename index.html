@@ -2477,7 +2477,6 @@ function isPrivateCompetition(comp=currentComp){
 }
 
 function renderJoinSupportQr(){
-  if(!supportBoxEnabled)return '';
   return `<div class="private-join-qr-wrap">
     <img class="private-join-qr-img" src="${PRIVATE_JOIN_QR_IMAGE}" alt="QR platba zápisné">
     <div class="private-join-qr-caption">Do zprávy pro příjemce vlož svoji přezdívku: <strong>${escapeHTML(currentUser?.username||'')}</strong></div>
