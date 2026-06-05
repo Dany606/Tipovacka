@@ -2200,7 +2200,11 @@ async function refreshCurrentMembership(){
 
 async function canAccessCurrentCompetition(){
   if(!currentComp||!currentUser)return false;
+
+  // Admin nevyplňuje vstupní / potvrzovací tabulku.
+  // Má automatický přístup do všech soutěží i všech období.
   if(currentUser.username===ADMIN_USERNAME)return true;
+
   if(currentMembership&&currentMembership.active!==false)return true;
   return false;
 }
@@ -2374,24 +2378,42 @@ async function joinCurrentCompetition(){
 async function getCompetitionParticipantUserIds(){
   const ids=new Set();
   if(!currentComp)return ids;
+
   try{
     let q=sb
       .from('competition_players')
       .select('user_id,active,period_id')
       .eq('competition_id',currentComp.id);
+
+    // Účast běžných hráčů je vázaná na konkrétní období.
     if(currentPeriod?.id)q=q.eq('period_id',currentPeriod.id);
 
     const{data,error}=await q;
     if(error){
       membershipTableAvailable=false;
       console.warn('competition_players leaderboard:',error.message||error);
-      return ids;
+    }else{
+      (data||[]).forEach(r=>{if(r.active!==false&&r.user_id)ids.add(r.user_id);});
     }
-    (data||[]).forEach(r=>{if(r.active!==false&&r.user_id)ids.add(r.user_id);});
   }catch(e){
     membershipTableAvailable=false;
     console.warn('competition_players leaderboard:',e);
   }
+
+  // Admin má automatický přístup do všech soutěží a období
+  // a zároveň se má automaticky zobrazovat v každém žebříčku.
+  try{
+    const{data:adminUser,error:adminErr}=await sb
+      .from('users')
+      .select('id,username')
+      .eq('username',ADMIN_USERNAME)
+      .maybeSingle();
+
+    if(!adminErr && adminUser?.id)ids.add(adminUser.id);
+  }catch(e){
+    console.warn('admin leaderboard auto include:',e);
+  }
+
   return ids;
 }
 
