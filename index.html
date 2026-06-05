@@ -5038,7 +5038,7 @@ async function renderAdmin(){
     }
 
     if((visibleAdminMatches||[]).length){
-      html+='<div class="admin-box"><h3>Přehled zápasů</h3><div style="color:var(--text3);font-size:12px;margin-bottom:10px;line-height:1.4">Zobrazuji jen dnešní a následující zápasy. Duplicitní nebo chybně založený zápas smažeš křížkem. Smažou se i tipy navázané na daný zápas.</div>';
+      html+='<div class="admin-box"><h3>Přehled zápasů</h3><div style="color:var(--text3);font-size:12px;margin-bottom:10px;line-height:1.4">Zobrazuji jen dnešní a následující zápasy. Duplicitní nebo chybně založený zápas / událost smažeš křížkem. Smažou se i tipy navázané na daný zápas.</div>';
       (visibleAdminMatches||[]).forEach(m=>{
         const statusLabel=m.status==='done'?'Ukončeno':isMatchLocked(m)?'Zamčeno':'Brzy';
         const statusColor=m.status==='done'?'var(--green)':isMatchLocked(m)?'var(--red)':'var(--gold)';
@@ -5047,7 +5047,7 @@ async function renderAdmin(){
             <div style="font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHTML(eventTitle(m))}</div>
             <div style="color:var(--text3);font-size:12px;margin-top:3px">${escapeHTML(m.match_date)}${isBinaryEvent(m)?' · událost':''} · <span style="color:${statusColor}">${statusLabel}</span></div>
           </div>
-          <button type="button" title="Smazat zápas" onclick="deleteMatch('${m.id}')" style="width:32px;height:32px;border-radius:50%;border:1px solid rgba(248,81,73,.45);background:rgba(248,81,73,.12);color:var(--red);font-size:18px;font-weight:800;line-height:1;cursor:pointer">×</button>
+          <button type="button" title="Smazat zápas / událost" onclick="deleteMatch('${m.id}')" style="width:32px;height:32px;border-radius:50%;border:1px solid rgba(248,81,73,.45);background:rgba(248,81,73,.12);color:var(--red);font-size:18px;font-weight:800;line-height:1;cursor:pointer">×</button>
         </div>`;
       });
       html+='</div>';
@@ -5083,7 +5083,10 @@ async function renderAdmin(){
         html+='<div class="admin-box"><h3>Upravit kurzy událostí</h3>';
         eventOddsMatches.forEach(m=>{
           html+=`<div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px">
-            <div style="font-weight:500;margin-bottom:8px;color:var(--text)">${escapeHTML(eventTitle(m))} <span style="color:var(--text3);font-size:12px">${escapeHTML(m.match_date)}</span></div>
+            <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+              <div style="font-weight:500;color:var(--text);flex:1;min-width:0">${escapeHTML(eventTitle(m))} <span style="color:var(--text3);font-size:12px">${escapeHTML(m.match_date)}</span></div>
+              <button type="button" title="Smazat událost" onclick="deleteMatch('${m.id}')" style="width:32px;height:32px;border-radius:50%;border:1px solid rgba(248,81,73,.45);background:rgba(248,81,73,.12);color:var(--red);font-size:18px;font-weight:800;line-height:1;cursor:pointer;flex:0 0 auto">×</button>
+            </div>
             <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:start">
               <input type="number" id="eo_ev_h_${m.id}" step="0.01" min="1.01" value="${formatOddInput(m.odds_home)}" placeholder="${escapeHTML(m.home)}" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px;color:var(--text);font-size:13px;outline:none">
               <input type="number" id="eo_ev_a_${m.id}" step="0.01" min="1.01" value="${formatOddInput(m.odds_away)}" placeholder="${escapeHTML(m.away)}" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px;color:var(--text);font-size:13px;outline:none">
@@ -5101,7 +5104,10 @@ async function renderAdmin(){
       pend.forEach(m=>{
         if(isBinaryEvent(m)){
           html+=`<div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px">
-            <div style="font-weight:500;margin-bottom:8px;color:var(--text)">${escapeHTML(eventTitle(m))} <span style="color:var(--text3);font-size:12px">${escapeHTML(m.match_date)}</span></div>
+            <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+              <div style="font-weight:500;color:var(--text);flex:1;min-width:0">${escapeHTML(eventTitle(m))} <span style="color:var(--text3);font-size:12px">${escapeHTML(m.match_date)}</span></div>
+              <button type="button" title="Smazat událost" onclick="deleteMatch('${m.id}')" style="width:32px;height:32px;border-radius:50%;border:1px solid rgba(248,81,73,.45);background:rgba(248,81,73,.12);color:var(--red);font-size:18px;font-weight:800;line-height:1;cursor:pointer;flex:0 0 auto">×</button>
+            </div>
             <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
               <select id="er_${m.id}" style="width:auto;margin:0;padding:6px">
                 <option value="">Vyber výsledek</option>
@@ -5466,9 +5472,30 @@ async function refundCreditStakesForDeletedMatch(match,tips){
     const stake=Number(t.stake||0);
     if(stake>0&&t.user_id)byUser[t.user_id]=(byUser[t.user_id]||0)+stake;
   });
+
   let refunded=0,players=0;
   for(const [uid,amount] of Object.entries(byUser)){
     try{
+      // Novější logika: kredity jsou po soutěži / období v competition_players.
+      let memQuery=sb.from('competition_players')
+        .select('id,credits')
+        .eq('competition_id',currentComp.id)
+        .eq('user_id',uid);
+      if(currentPeriod?.id)memQuery=memQuery.eq('period_id',currentPeriod.id);
+
+      const{data:mem,error:memErr}=await memQuery.maybeSingle();
+      if(!memErr&&mem?.id){
+        const newCredits=Number(mem.credits||0)+amount;
+        const{error:updateErr}=await sb.from('competition_players').update({credits:newCredits}).eq('id',mem.id);
+        if(!updateErr){
+          refunded+=amount;
+          players++;
+          if(currentUser&&String(currentUser.id)===String(uid))currentMembership={...currentMembership,credits:newCredits};
+          continue;
+        }
+      }
+
+      // Fallback pro starší NHL / staré záznamy.
       const{data:user,error:loadErr}=await sb.from('users').select('credits').eq('id',uid).single();
       if(loadErr||!user)continue;
       const newCredits=Number(user.credits||0)+amount;
@@ -5480,6 +5507,7 @@ async function refundCreditStakesForDeletedMatch(match,tips){
   }
   return {refunded,players};
 }
+
 
 async function deleteMatch(mid){
   if(!currentUser||currentUser.username!==ADMIN_USERNAME){alert('Tahle akce je jen pro admina.');return;}
