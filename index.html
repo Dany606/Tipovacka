@@ -1952,6 +1952,136 @@ img.reward-admin-img{
 }
 </style>
 
+
+<style id="admin-messages-feature-v1">
+.msg-box{
+  background:rgba(22,27,34,.90);
+  border:1px solid rgba(56,139,253,.30);
+  backdrop-filter:blur(7px);
+  border-radius:var(--radius);
+  padding:.85rem .95rem;
+  margin:-.05rem 0 .9rem;
+  box-shadow:0 0 18px rgba(56,139,253,.06);
+}
+.msg-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:.65rem;
+}
+.msg-title{
+  color:#79c0ff;
+  font-size:12px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:1px;
+}
+.msg-badge{
+  color:#79c0ff;
+  font-size:10px;
+  font-weight:900;
+  border:1px solid rgba(56,139,253,.34);
+  background:rgba(56,139,253,.10);
+  border-radius:999px;
+  padding:4px 8px;
+}
+.msg-list{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  max-height:240px;
+  overflow:auto;
+  padding-right:2px;
+}
+.msg-item{
+  border:1px solid rgba(139,148,158,.18);
+  background:rgba(13,17,23,.58);
+  border-radius:10px;
+  padding:.55rem .65rem;
+}
+.msg-item.admin{
+  border-color:rgba(56,139,253,.26);
+  background:rgba(56,139,253,.08);
+}
+.msg-meta{
+  display:flex;
+  justify-content:space-between;
+  gap:8px;
+  color:var(--text3);
+  font-size:10.5px;
+  margin-bottom:4px;
+}
+.msg-author{
+  color:var(--text2);
+  font-weight:900;
+}
+.msg-item.admin .msg-author{color:#79c0ff}
+.msg-text{
+  color:var(--text);
+  font-size:13px;
+  line-height:1.38;
+  white-space:pre-wrap;
+}
+.msg-empty{
+  color:var(--text3);
+  font-size:12px;
+  padding:.35rem 0;
+}
+.msg-form{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:8px;
+  margin-top:.65rem;
+  align-items:start;
+}
+.msg-form textarea{
+  min-height:42px;
+  max-height:110px;
+  resize:vertical;
+}
+.msg-admin-thread{
+  border:1px solid rgba(139,148,158,.20);
+  background:rgba(13,17,23,.48);
+  border-radius:12px;
+  padding:.7rem;
+  margin-bottom:.7rem;
+}
+.msg-admin-thread-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:8px;
+  margin-bottom:.55rem;
+}
+.msg-admin-thread-title{
+  color:var(--text);
+  font-weight:900;
+}
+.msg-admin-thread-sub{
+  color:var(--text3);
+  font-size:11px;
+}
+.msg-admin-reply{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:8px;
+  margin-top:.6rem;
+}
+.msg-unread-dot{
+  display:inline-flex;
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:var(--gold);
+  box-shadow:0 0 10px rgba(227,179,65,.45);
+  margin-right:6px;
+}
+@media(max-width:620px){
+  .msg-form,.msg-admin-reply{grid-template-columns:1fr}
+}
+</style>
+
 </head>
 <body>
 
@@ -7132,6 +7262,320 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
   document.addEventListener('DOMContentLoaded',function(){
     setTimeout(renderPollBox,1000);
     setTimeout(renderPollAdminBox,1200);
+  });
+})();
+</script>
+
+
+<script id="admin-messages-feature-v1">
+(function(){
+  if(window.__adminMessagesFeatureV1)return;
+  window.__adminMessagesFeatureV1=true;
+
+  function msgEscape(s){
+    return (typeof escapeHTML==='function') ? escapeHTML(s) : String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  function msgDate(v){
+    const d=v?new Date(v):new Date();
+    if(isNaN(d.getTime()))return '';
+    return d.toLocaleDateString('cs-CZ',{day:'2-digit',month:'2-digit'})+' '+d.toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'});
+  }
+
+  function msgPeriodId(){
+    return currentPeriod?.id||null;
+  }
+
+  function removePlayerAdminMessagesBox(){
+    document.querySelectorAll('#playerAdminMessagesBox,.msg-box[data-player-admin-messages="1"]').forEach(el=>el.remove());
+  }
+
+  async function canUsePlayerAdminMessages(){
+    if(!currentUser||!currentComp)return false;
+    if(currentUser.username===ADMIN_USERNAME)return false;
+    if(typeof canAccessCurrentCompetition==='function'){
+      try{
+        const ok=await canAccessCurrentCompetition();
+        if(!ok)return false;
+      }catch(e){}
+    }
+    if(typeof isPrivateCompetition==='function'&&isPrivateCompetition(currentComp)){
+      return !!(currentMembership&&currentMembership.active!==false);
+    }
+    return true;
+  }
+
+  async function loadMyAdminMessages(){
+    if(!currentComp||!currentUser)return [];
+    try{
+      let q=sb.from('admin_messages')
+        .select('*')
+        .eq('competition_id',currentComp.id)
+        .eq('user_id',currentUser.id)
+        .order('created_at',{ascending:true});
+      if(msgPeriodId())q=q.eq('period_id',msgPeriodId());
+      const {data,error}=await q;
+      if(error)throw error;
+      return data||[];
+    }catch(e){
+      console.warn('admin messages load player:',e);
+      return null;
+    }
+  }
+
+  async function renderPlayerAdminMessagesBox(){
+    removePlayerAdminMessagesBox();
+    if(!(await canUsePlayerAdminMessages()))return;
+
+    const rows=await loadMyAdminMessages();
+    const box=document.createElement('div');
+    box.id='playerAdminMessagesBox';
+    box.className='msg-box';
+    box.dataset.playerAdminMessages='1';
+
+    if(rows===null){
+      box.innerHTML=`<div class="msg-head"><div class="msg-title">✉️ Zpráva adminovi</div></div>
+        <div class="msg-empty">Zprávy se nepodařilo načíst. Zkontroluj SQL tabulku <strong>admin_messages</strong>.</div>`;
+    }else{
+      const list=(rows||[]).length ? rows.map(m=>`
+        <div class="msg-item ${m.sender_role==='admin'?'admin':'player'}">
+          <div class="msg-meta">
+            <span class="msg-author">${m.sender_role==='admin'?'Admin':msgEscape(m.username||currentUser.username||'Hráč')}</span>
+            <span>${msgDate(m.created_at)}</span>
+          </div>
+          <div class="msg-text">${msgEscape(m.message||'')}</div>
+        </div>
+      `).join('') : '<div class="msg-empty">Zatím tu není žádná zpráva. Napiš adminovi dotaz, připomínku nebo domluvu k soutěži.</div>';
+
+      box.innerHTML=`<div class="msg-head">
+          <div class="msg-title">✉️ Zpráva adminovi</div>
+          <div class="msg-badge">${msgEscape(currentPeriod?.name||'aktuální období')}</div>
+        </div>
+        <div class="msg-list">${list}</div>
+        <div class="msg-form">
+          <textarea id="playerAdminMessageText" placeholder="Napiš zprávu adminovi..." maxlength="1200"></textarea>
+          <button class="btn-a btn-g" onclick="sendPlayerAdminMessage()">Odeslat</button>
+        </div>`;
+    }
+
+    const poll=document.getElementById('playerPollBox');
+    const updates=document.getElementById('updatesBox');
+    const matches=document.getElementById('matchesContent')||document.getElementById('tab-matches');
+    if(poll)poll.after(box);
+    else if(updates)updates.after(box);
+    else if(matches)matches.prepend(box);
+  }
+
+  window.sendPlayerAdminMessage=async function(){
+    if(!currentUser||!currentComp)return;
+    const ta=document.getElementById('playerAdminMessageText');
+    const text=(ta?.value||'').trim();
+    if(!text){alert('Napiš zprávu.');return;}
+    try{
+      const payload={
+        competition_id:currentComp.id,
+        period_id:msgPeriodId(),
+        user_id:currentUser.id,
+        username:currentUser.username||'Hráč',
+        sender_role:'player',
+        message:text,
+        is_read:false,
+        created_at:new Date().toISOString()
+      };
+      const {error}=await sb.from('admin_messages').insert(payload);
+      if(error)throw error;
+      if(ta)ta.value='';
+      await renderPlayerAdminMessagesBox();
+      alert('Zpráva odeslána adminovi.');
+    }catch(e){
+      alert('Zprávu se nepodařilo odeslat. Zkontroluj SQL tabulku admin_messages. Chyba: '+(e.message||e));
+    }
+  };
+
+  async function loadAdminMessages(){
+    if(!currentComp)return [];
+    try{
+      let q=sb.from('admin_messages')
+        .select('*')
+        .eq('competition_id',currentComp.id)
+        .order('created_at',{ascending:true});
+      if(msgPeriodId())q=q.eq('period_id',msgPeriodId());
+      const {data,error}=await q;
+      if(error)throw error;
+      return data||[];
+    }catch(e){
+      console.warn('admin messages load admin:',e);
+      return null;
+    }
+  }
+
+  function groupMessagesByUser(rows){
+    const map={};
+    (rows||[]).forEach(m=>{
+      const key=String(m.user_id||m.username||'unknown');
+      if(!map[key])map[key]={user_id:m.user_id,username:m.username||'Hráč',items:[],unread:0,last:null};
+      map[key].items.push(m);
+      map[key].last=m.created_at;
+      if(m.sender_role!=='admin'&&!m.is_read)map[key].unread++;
+    });
+    return Object.values(map).sort((a,b)=>new Date(b.last||0)-new Date(a.last||0));
+  }
+
+  async function renderAdminMessagesBox(){
+    if(!currentUser||currentUser.username!==ADMIN_USERNAME||!currentComp)return;
+    document.getElementById('adminMessagesBox')?.remove();
+
+    const panel=document.querySelector('.admin-tab-panel[data-admin-panel="requests"]')||
+                document.querySelector('.admin-tab-panel[data-admin-panel="players"]')||
+                document.getElementById('adminContent');
+    if(!panel)return;
+
+    const rows=await loadAdminMessages();
+    const box=document.createElement('div');
+    box.className='admin-box';
+    box.id='adminMessagesBox';
+    box.innerHTML='<h3>Zprávy od hráčů</h3>';
+
+    if(rows===null){
+      box.innerHTML+='<div class="empty">Zprávy se nepodařilo načíst. Zkontroluj SQL tabulku <strong>admin_messages</strong>.</div>';
+      panel.prepend(box);
+      return;
+    }
+
+    const groups=groupMessagesByUser(rows);
+    if(!groups.length){
+      box.innerHTML+='<div class="empty">Zatím žádné zprávy v této soutěži / období.</div>';
+      panel.prepend(box);
+      return;
+    }
+
+    box.innerHTML+=groups.map(g=>{
+      const msgs=g.items.map(m=>`
+        <div class="msg-item ${m.sender_role==='admin'?'admin':'player'}">
+          <div class="msg-meta">
+            <span class="msg-author">${m.sender_role==='admin'?'Admin':msgEscape(m.username||g.username)}</span>
+            <span>${msgDate(m.created_at)}</span>
+          </div>
+          <div class="msg-text">${msgEscape(m.message||'')}</div>
+        </div>
+      `).join('');
+      const dot=g.unread?'<span class="msg-unread-dot"></span>':'';
+      return `<div class="msg-admin-thread">
+        <div class="msg-admin-thread-head">
+          <div>
+            <div class="msg-admin-thread-title">${dot}${msgEscape(g.username)}</div>
+            <div class="msg-admin-thread-sub">${g.items.length} zpráv${g.unread?` · ${g.unread} nových`:''}</div>
+          </div>
+          <button class="btn-a" onclick="markAdminMessagesRead('${g.user_id||''}')">Označit přečtené</button>
+        </div>
+        <div class="msg-list">${msgs}</div>
+        <div class="msg-admin-reply">
+          <textarea id="adminReply_${g.user_id}" placeholder="Odpověď hráči ${msgEscape(g.username)}..." maxlength="1200"></textarea>
+          <button class="btn-a btn-g" onclick="sendAdminReply('${g.user_id||''}','${msgEscape(g.username).replace(/'/g,'&#39;')}')">Odpovědět</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    panel.prepend(box);
+  }
+
+  window.sendAdminReply=async function(userId,username){
+    if(!currentUser||currentUser.username!==ADMIN_USERNAME||!currentComp)return;
+    const ta=document.getElementById('adminReply_'+userId);
+    const text=(ta?.value||'').trim();
+    if(!text){alert('Napiš odpověď.');return;}
+    try{
+      const payload={
+        competition_id:currentComp.id,
+        period_id:msgPeriodId(),
+        user_id:userId||null,
+        username:username||'Hráč',
+        sender_role:'admin',
+        message:text,
+        is_read:false,
+        created_at:new Date().toISOString()
+      };
+      const {error}=await sb.from('admin_messages').insert(payload);
+      if(error)throw error;
+      if(ta)ta.value='';
+      await renderAdminMessagesBox();
+      alert('Odpověď odeslána.');
+    }catch(e){
+      alert('Odpověď se nepodařilo odeslat: '+(e.message||e));
+    }
+  };
+
+  window.markAdminMessagesRead=async function(userId){
+    if(!currentComp||!userId)return;
+    try{
+      let q=sb.from('admin_messages')
+        .update({is_read:true})
+        .eq('competition_id',currentComp.id)
+        .eq('user_id',userId)
+        .eq('sender_role','player');
+      if(msgPeriodId())q=q.eq('period_id',msgPeriodId());
+      const {error}=await q;
+      if(error)throw error;
+      await renderAdminMessagesBox();
+    }catch(e){
+      alert('Nepodařilo se označit jako přečtené: '+(e.message||e));
+    }
+  };
+
+  function schedulePlayerMessages(){
+    clearTimeout(window.__adminMsgPlayerTimer1);
+    clearTimeout(window.__adminMsgPlayerTimer2);
+    window.__adminMsgPlayerTimer1=setTimeout(renderPlayerAdminMessagesBox,350);
+    window.__adminMsgPlayerTimer2=setTimeout(renderPlayerAdminMessagesBox,900);
+  }
+
+  function scheduleAdminMessages(){
+    clearTimeout(window.__adminMsgAdminTimer1);
+    clearTimeout(window.__adminMsgAdminTimer2);
+    window.__adminMsgAdminTimer1=setTimeout(renderAdminMessagesBox,450);
+    window.__adminMsgAdminTimer2=setTimeout(renderAdminMessagesBox,1000);
+  }
+
+  const oldRenderMatches=window.renderMatches;
+  if(typeof oldRenderMatches==='function'){
+    window.renderMatches=async function(){
+      const res=await oldRenderMatches.apply(this,arguments);
+      schedulePlayerMessages();
+      return res;
+    };
+  }
+
+  const oldLoadUpdates=window.loadUpdates;
+  if(typeof oldLoadUpdates==='function'){
+    window.loadUpdates=async function(){
+      const res=await oldLoadUpdates.apply(this,arguments);
+      schedulePlayerMessages();
+      return res;
+    };
+  }
+
+  const oldRenderAdmin=window.renderAdmin;
+  if(typeof oldRenderAdmin==='function'){
+    window.renderAdmin=async function(){
+      const res=await oldRenderAdmin.apply(this,arguments);
+      scheduleAdminMessages();
+      return res;
+    };
+  }
+
+  const oldSwitchCompetitionPeriod=window.switchCompetitionPeriod;
+  if(typeof oldSwitchCompetitionPeriod==='function'){
+    window.switchCompetitionPeriod=async function(){
+      const res=await oldSwitchCompetitionPeriod.apply(this,arguments);
+      schedulePlayerMessages();
+      scheduleAdminMessages();
+      return res;
+    };
+  }
+
+  document.addEventListener('DOMContentLoaded',function(){
+    setTimeout(renderPlayerAdminMessagesBox,1200);
+    setTimeout(renderAdminMessagesBox,1400);
   });
 })();
 </script>
