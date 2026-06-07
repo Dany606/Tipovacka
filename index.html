@@ -1903,6 +1903,55 @@ img.reward-admin-img{
 }
 </style>
 
+
+<style id="poll-compact-fix-v1">
+/* Anketa po hlasování – kompaktnější výsledky */
+.poll-box{
+  padding:.72rem .82rem !important;
+  margin:-.1rem 0 .65rem !important;
+}
+.poll-head{
+  margin-bottom:.5rem !important;
+}
+.poll-title{
+  font-size:11px !important;
+}
+.poll-question{
+  font-size:14px !important;
+  margin-bottom:.5rem !important;
+}
+.poll-options{
+  gap:5px !important;
+}
+.poll-result-row{
+  grid-template-columns:1fr 44px !important;
+  gap:7px !important;
+  padding:.38rem .5rem !important;
+  border-radius:8px !important;
+}
+.poll-result-label{
+  font-size:12px !important;
+  margin-bottom:3px !important;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.poll-bar{
+  height:5px !important;
+}
+.poll-percent{
+  font-size:12px !important;
+}
+.poll-note{
+  margin-top:.45rem !important;
+  font-size:11px !important;
+}
+.poll-option-btn{
+  padding:.58rem .7rem !important;
+  font-size:13px !important;
+}
+</style>
+
 </head>
 <body>
 
@@ -6830,7 +6879,9 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
   }
 
   function removePollBox(){
-    document.getElementById('playerPollBox')?.remove();
+    // Při více asynchronních renderech se občas vytvořily dvě ankety.
+    // Mažeme všechny výskyty, ne jen první nalezený element s ID.
+    document.querySelectorAll('#playerPollBox,.poll-box[data-player-poll="1"]').forEach(el=>el.remove());
   }
 
   function escapePoll(s){
@@ -6843,8 +6894,11 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
   }
 
   async function renderPollBox(){
-    removePollBox();
-    if(!(await canSeePoll()))return;
+    if(window.__pollRenderingNow)return;
+    window.__pollRenderingNow=true;
+    try{
+      removePollBox();
+      if(!(await canSeePoll()))return;
 
     const setting=await loadPollSetting();
     if(!setting.enabled||!setting.question||setting.options.length<2)return;
@@ -6864,7 +6918,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
           const pct=total?Math.round(counts[i]/total*100):0;
           return `<div class="poll-result-row">
             <div>
-              <div class="poll-result-label">${escapePoll(opt)} · ${counts[i]} hlasů</div>
+              <div class="poll-result-label" title="${escapePoll(opt)}">${escapePoll(opt)} · ${counts[i]}</div>
               <div class="poll-bar"><div class="poll-bar-fill" style="width:${pct}%"></div></div>
             </div>
             <div class="poll-percent">${pct}%</div>
@@ -6890,8 +6944,12 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
 
     const mount=pollMountPoint();
     if(!mount)return;
+    box.dataset.playerPoll='1';
     if(mount.id==='updatesBox')mount.after(box);
     else mount.prepend(box);
+    }finally{
+      window.__pollRenderingNow=false;
+    }
   }
 
   window.votePoll=async function(optionIndex){
@@ -7027,8 +7085,10 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
   };
 
   function schedulePollRender(){
-    setTimeout(renderPollBox,250);
-    setTimeout(renderPollBox,800);
+    clearTimeout(window.__pollRenderTimer1);
+    clearTimeout(window.__pollRenderTimer2);
+    window.__pollRenderTimer1=setTimeout(renderPollBox,250);
+    window.__pollRenderTimer2=setTimeout(renderPollBox,700);
   }
 
   const oldRenderMatches=window.renderMatches;
