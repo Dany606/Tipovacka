@@ -2831,9 +2831,18 @@ function insertUpdateFormat(openTag,closeTag){
 
 function updateKindText(u){
   const msg=u.message||u.text||u.body||'';
-  if(msg)return formatManualUpdateText(msg);
-  const username=escapeHTML(u.username||u.player_name||u.player||'hráč');
+  const username=escapeHTML(u.username||u.player_name||u.player||u.name||'hráč');
   const amount=Number(u.amount||u.credits||0).toLocaleString('cs-CZ');
+
+  // Starší chybné automatické řádky měly uložený text "Hráč hráč..."
+  // i když už v řádku může být username/player_name. V takovém případě text opravíme při zobrazení.
+  if((u.type!=='manual') && Number(u.amount||u.credits||0)>0){
+    if(!msg || /Hráč\s+hráč\s+si zakoupil/i.test(msg)){
+      return `Hráč <strong>${username}</strong> si zakoupil <strong>${amount} kreditů</strong>.`;
+    }
+  }
+
+  if(msg)return formatManualUpdateText(msg);
   return `Hráč <strong>${username}</strong> si zakoupil <strong>${amount} kreditů</strong>.`;
 }
 
@@ -2850,8 +2859,8 @@ function normalizeAllUpdates(items){
         type,
         message:msg,
         text:msg,
-        username:u.username||u.player_name||u.player||u.name||'Admin',
-        player_name:u.player_name||u.username||u.player||u.name||'Admin',
+        username:u.username||u.player_name||u.player||u.name||(type==='manual'?'Admin':'hráč'),
+        player_name:u.player_name||u.username||u.player||u.name||(type==='manual'?'Admin':'hráč'),
         amount:Number(u.amount||u.credits||0)||0,
         credits:Number(u.credits||u.amount||0)||0,
         user_id:u.user_id||u.userId||null,
@@ -2950,11 +2959,25 @@ async function insertManualUpdate(){
 
 async function deleteManualUpdate(id){
   if(!id)return;
-  if(!confirm('Smazat tuto ruční aktualizaci?'))return;
+  if(!confirm('Smazat tuto aktualizaci?'))return;
+
   const{error}=await sb.from('updates').delete().eq('id',id);
   if(error){alert('Aktualizaci se nepodařilo smazat: '+error.message);return;}
+
+  // Vyčistíme i lokální kopie, kdyby se automatická aktualizace propsala do localStorage.
+  ['tip_credit_updates','tip_updates','credit_updates','updates'].forEach(key=>{
+    try{
+      const arr=JSON.parse(localStorage.getItem(key)||'[]');
+      if(Array.isArray(arr)){
+        const filtered=arr.filter(x=>String(x.id||'')!==String(id));
+        localStorage.setItem(key,JSON.stringify(filtered));
+      }
+    }catch(e){}
+  });
+
   await loadUpdates();
-  renderAdmin();
+  await renderAdminManualUpdatesPreview();
+  alert('Aktualizace smazána.');
 }
 
 function renderRulesUpdatesAdminBox(){
@@ -2984,7 +3007,7 @@ function renderRulesUpdatesAdminBox(){
           Formátování: <code>**tučně**</code> · <code>[gold]zlatě[/gold]</code> · <code>[green]zeleně[/green]</code> · <code>[red]červeně[/red]</code> · <code>[blue]modře[/blue]</code>
         </div>
         <button class="btn-a btn-g" onclick="insertManualUpdate()" style="width:100%;margin-top:.7rem">Přidat aktualizaci</button>
-        <div class="admin-small-note">Zakoupení kreditů se do aktualizací zapisuje dál automaticky. Ruční řádky slouží jako zprávy pro hráče.</div>
+        <div class="admin-small-note">Zakoupení kreditů se do aktualizací zapisuje dál automaticky. Níže můžeš mazat ruční i automatické aktualizace tohoto období.</div>
         <div id="adminManualUpdatesList"></div>
       </div>
     </div>
@@ -2995,16 +3018,34 @@ async function renderAdminManualUpdatesPreview(){
   const el=document.getElementById('adminManualUpdatesList');
   if(!el||!currentComp)return;
   try{
-    let q=sb.from('updates').select('*').eq('competition_id',currentComp.id).order('created_at',{ascending:false}).limit(30);
+    let q=sb.from('updates').select('*').eq('competition_id',currentComp.id).order('created_at',{ascending:false}).limit(50);
     if(currentPeriod?.id)q=q.eq('period_id',currentPeriod.id);
     const{data,error}=await q;
     if(error){throw error;}
-    const rows=normalizeAllUpdates(data||[]).filter(u=>u.type==='manual').slice(0,5);
-    if(!rows.length){el.innerHTML='<div class="update-empty" style="margin-top:8px">Žádné ruční aktualizace pro toto období.</div>';return;}
-    el.innerHTML='<div class="admin-update-preview" style="margin-top:8px">'+rows.map(u=>`<div class="update-row"><span>${formatUpdateDate(u.created_at)}</span><strong>${updateKindText(u)}</strong></div>`).join('')+'</div>';
+
+    const rows=normalizeAllUpdates(data||[]).slice(0,12);
+    if(!rows.length){
+      el.innerHTML='<div class="update-empty" style="margin-top:8px">Žádné aktualizace pro toto období.</div>';
+      return;
+    }
+
+    el.innerHTML='<div class="admin-update-preview" style="margin-top:8px;display:flex;flex-direction:column;gap:6px">'+rows.map(u=>{
+      const isAuto=u.type!=='manual';
+      const label=isAuto?'automatická':'ruční';
+      const labelColor=isAuto?'var(--gold)':'var(--green)';
+      const del=u.id?`<button type="button" class="btn-a" style="background:#5c1f1f;font-size:11px;padding:5px 8px" onclick="deleteManualUpdate('${u.id}')">× Smazat</button>`:'';
+      return `<div class="update-row" style="grid-template-columns:78px 1fr auto;align-items:center">
+        <span>${formatUpdateDate(u.created_at)}</span>
+        <div>
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:${labelColor};font-weight:900;margin-bottom:2px">${label}</div>
+          <strong>${updateKindText(u)}</strong>
+        </div>
+        ${del}
+      </div>`;
+    }).join('')+'</div>';
   }catch(e){
     el.innerHTML='<div class="update-empty" style="margin-top:8px">Aktualizace se nepodařilo načíst.</div>';
-    console.warn('admin manual updates:',e);
+    console.warn('admin updates:',e);
   }
 }
 
@@ -5125,7 +5166,7 @@ async function renderAdmin(){
   html+=renderRulesUpdatesAdminBox();
 
   const adminCreditPlayers=await getCurrentCompetitionAdminPlayers(users);
-  const userOptions=(adminCreditPlayers||[]).map(u=>`<option value="${u.user_id}">${escapeHTML(u.username)} · ${Number(u.credits||0).toLocaleString('cs-CZ')} kr</option>`).join('');
+  const userOptions=(adminCreditPlayers||[]).map(u=>`<option value="${u.user_id}" data-username="${escapeHTML(u.username)}" data-credits="${Number(u.credits||0)}">${escapeHTML(u.username)} · ${Number(u.credits||0).toLocaleString('cs-CZ')} kr</option>`).join('');
   html+=`<div class="admin-box"><h3>Upravit kredity hráče</h3>
     <div style="color:var(--text3);font-size:12px;margin-bottom:10px;line-height:1.4">Zobrazuji jen hráče schválené v aktuální soutěži a období. Úprava kreditů se uloží pouze pro: <strong>${escapeHTML(currentComp?.name||'aktuální soutěž')}</strong> · <strong>${escapeHTML(currentPeriod?.name||'aktuální období')}</strong>.</div>
     <div class="field"><label>Hráč</label><select id="creditUser">${userOptions||'<option value="">V tomto období nejsou žádní hráči</option>'}</select></div>
@@ -5279,27 +5320,28 @@ async function adjustUserCredits(){
   if(!currentUser||currentUser.username!==ADMIN_USERNAME){alert('Tahle akce je jen pro admina.');return;}
   if(!currentComp){alert('Nejdřív vyber soutěž.');return;}
 
-  const userId=document.getElementById('creditUser')?.value;
+  const select=document.getElementById('creditUser');
+  const opt=select?.selectedOptions?.[0]||null;
+  const userId=select?.value;
   const mode=document.getElementById('creditMode')?.value;
   const amount=parseInt(document.getElementById('creditAmount')?.value,10);
+
   if(!userId){alert('Vyber hráče z aktuální soutěže / období.');return;}
   if(isNaN(amount)||amount<0){alert('Zadej platnou částku.');return;}
 
-  const players=await getCurrentCompetitionAdminPlayers([]);
-  let currentCredits=0;
-  const selected=players.find(p=>String(p.user_id)===String(userId));
-  if(selected)currentCredits=Number(selected.credits||0);
-  else{
-    let q=sb.from('competition_players')
-      .select('credits')
-      .eq('competition_id',currentComp.id)
-      .eq('user_id',userId);
-    if(currentPeriod?.id)q=q.eq('period_id',currentPeriod.id);
-    const{data:mem}=await q.maybeSingle();
-    if(mem)currentCredits=Number(mem.credits||0);
-    else if(currentUser?.username===ADMIN_USERNAME&&String(userId)===String(currentUser.id))currentCredits=currentCompetitionCreditsValue();
-    else{alert('Tenhle hráč není schválený v aktuální soutěži / období.');return;}
-  }
+  const userName=(opt?.dataset?.username||opt?.textContent?.split('·')?.[0]||'hráč').trim();
+
+  let currentCredits=Number(opt?.dataset?.credits||0);
+  let q=sb.from('competition_players')
+    .select('id,credits')
+    .eq('competition_id',currentComp.id)
+    .eq('user_id',userId);
+  if(currentPeriod?.id)q=q.eq('period_id',currentPeriod.id);
+
+  const{data:mem,error:memErr}=await q.maybeSingle();
+  if(!memErr&&mem)currentCredits=Number(mem.credits||0);
+  else if(currentUser?.username===ADMIN_USERNAME&&String(userId)===String(currentUser.id))currentCredits=currentCompetitionCreditsValue();
+  else{alert('Tenhle hráč není schválený v aktuální soutěži / období.');return;}
 
   let newCredits=currentCredits;
   if(mode==='add')newCredits=currentCredits+amount;
@@ -5309,7 +5351,6 @@ async function adjustUserCredits(){
 
   if(newCredits<0){alert('Kredity nemůžou být pod nulou. Zadej menší částku nebo nastav přesnou hodnotu.');return;}
 
-  const userName=selected?.username||'hráč';
   const actionText=mode==='add'?'přidat':mode==='sub'?'odebrat':'nastavit na';
   if(!confirm(`${userName}: ${currentCredits.toLocaleString('cs-CZ')} kr → ${newCredits.toLocaleString('cs-CZ')} kr\n\nSoutěž: ${currentComp.name}\nObdobí: ${currentPeriod?.name||'aktuální'}\n\nOpravdu chceš ${actionText} ${amount.toLocaleString('cs-CZ')} kr?`))return;
 
