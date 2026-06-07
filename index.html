@@ -1953,56 +1953,96 @@ img.reward-admin-img{
 </style>
 
 
+
 <style id="admin-messages-feature-v1">
-.msg-box{
-  background:rgba(22,27,34,.90);
-  border:1px solid rgba(56,139,253,.30);
-  backdrop-filter:blur(7px);
-  border-radius:var(--radius);
-  padding:.85rem .95rem;
-  margin:-.05rem 0 .9rem;
-  box-shadow:0 0 18px rgba(56,139,253,.06);
+.msg-nav-btn{
+  position:relative;
 }
-.msg-head{
+.msg-nav-btn .msg-nav-dot{
+  position:absolute;
+  top:6px;
+  right:8px;
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:var(--gold);
+  box-shadow:0 0 10px rgba(227,179,65,.65);
+}
+.msg-modal-backdrop{
+  position:fixed;
+  inset:0;
+  z-index:9999;
+  background:rgba(1,4,9,.68);
+  backdrop-filter:blur(5px);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:16px;
+}
+.msg-modal-backdrop.open{
+  display:flex;
+}
+.msg-modal{
+  width:min(560px,100%);
+  max-height:min(720px,92vh);
+  display:flex;
+  flex-direction:column;
+  border-radius:18px;
+  border:1px solid rgba(56,139,253,.34);
+  background:linear-gradient(180deg,rgba(22,27,34,.96),rgba(13,17,23,.97));
+  box-shadow:0 22px 70px rgba(0,0,0,.55),0 0 28px rgba(56,139,253,.10);
+  overflow:hidden;
+}
+.msg-modal-head{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap:10px;
-  margin-bottom:.65rem;
+  gap:12px;
+  padding:14px 16px;
+  border-bottom:1px solid rgba(139,148,158,.18);
 }
-.msg-title{
+.msg-modal-title{
   color:#79c0ff;
-  font-size:12px;
+  font-size:13px;
   font-weight:900;
   text-transform:uppercase;
   letter-spacing:1px;
 }
-.msg-badge{
-  color:#79c0ff;
-  font-size:10px;
-  font-weight:900;
-  border:1px solid rgba(56,139,253,.34);
-  background:rgba(56,139,253,.10);
-  border-radius:999px;
-  padding:4px 8px;
+.msg-modal-sub{
+  color:var(--text3);
+  font-size:11px;
+  margin-top:2px;
+}
+.msg-modal-close{
+  width:34px;
+  height:34px;
+  border-radius:50%;
+  border:1px solid rgba(139,148,158,.26);
+  background:rgba(13,17,23,.65);
+  color:var(--text2);
+  font-size:22px;
+  line-height:1;
+  cursor:pointer;
+}
+.msg-modal-body{
+  padding:12px;
+  overflow:auto;
+  flex:1;
 }
 .msg-list{
   display:flex;
   flex-direction:column;
-  gap:6px;
-  max-height:240px;
-  overflow:auto;
-  padding-right:2px;
+  gap:7px;
 }
 .msg-item{
   border:1px solid rgba(139,148,158,.18);
   background:rgba(13,17,23,.58);
-  border-radius:10px;
-  padding:.55rem .65rem;
+  border-radius:12px;
+  padding:.6rem .7rem;
 }
 .msg-item.admin{
-  border-color:rgba(56,139,253,.26);
-  background:rgba(56,139,253,.08);
+  border-color:rgba(56,139,253,.28);
+  background:rgba(56,139,253,.09);
 }
 .msg-meta{
   display:flex;
@@ -2020,24 +2060,26 @@ img.reward-admin-img{
 .msg-text{
   color:var(--text);
   font-size:13px;
-  line-height:1.38;
+  line-height:1.4;
   white-space:pre-wrap;
 }
 .msg-empty{
   color:var(--text3);
   font-size:12px;
-  padding:.35rem 0;
+  padding:.45rem 0;
 }
-.msg-form{
+.msg-modal-form{
   display:grid;
   grid-template-columns:1fr auto;
   gap:8px;
-  margin-top:.65rem;
+  padding:12px;
+  border-top:1px solid rgba(139,148,158,.18);
+  background:rgba(13,17,23,.55);
   align-items:start;
 }
-.msg-form textarea{
-  min-height:42px;
-  max-height:110px;
+.msg-modal-form textarea{
+  min-height:46px;
+  max-height:120px;
   resize:vertical;
 }
 .msg-admin-thread{
@@ -2078,7 +2120,42 @@ img.reward-admin-img{
   margin-right:6px;
 }
 @media(max-width:620px){
-  .msg-form,.msg-admin-reply{grid-template-columns:1fr}
+  .msg-modal{max-height:94vh}
+  .msg-modal-form,.msg-admin-reply{grid-template-columns:1fr}
+}
+</style>
+
+
+<style id="admin-alert-badge-v1">
+#adminNavBtn{
+  position:relative;
+}
+.admin-alert-badge{
+  position:absolute;
+  top:-7px;
+  right:-7px;
+  width:19px;
+  height:19px;
+  border-radius:50%;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  background:linear-gradient(135deg,#050505 0%,#2a0505 42%,#f85149 100%);
+  color:#fff;
+  border:2px solid #ff7b72;
+  box-shadow:0 0 0 2px rgba(0,0,0,.55),0 0 14px rgba(248,81,73,.8);
+  font-size:13px;
+  font-weight:1000;
+  line-height:1;
+  z-index:2;
+  animation:adminAlertPulse 1.15s infinite;
+}
+#adminNavBtn.has-admin-alert .admin-alert-badge{
+  display:inline-flex;
+}
+@keyframes adminAlertPulse{
+  0%,100%{transform:scale(1);filter:brightness(1)}
+  50%{transform:scale(1.12);filter:brightness(1.28)}
 }
 </style>
 
@@ -2143,7 +2220,8 @@ img.reward-admin-img{
       <button class="nav-btn active" onclick="switchTab('matches',this)">🏒 Zápasy</button>
       <button class="nav-btn" onclick="switchTab('mytips',this)">🎫 Mé tipy</button>
       <button class="nav-btn" onclick="switchTab('leaderboard',this)">🏆 Žebříček</button>
-      <button class="nav-btn" id="adminNavBtn" style="display:none" onclick="switchTab('admin',this)">⚙️ Admin</button>
+      <button class="nav-btn msg-nav-btn" id="playerMsgNavBtn" style="display:none" type="button" onclick="openPlayerAdminMessageModal()">✉️ Zpráva</button>
+      <button class="nav-btn" id="adminNavBtn" style="display:none" onclick="switchTab('admin',this)">⚙️ Admin<span class="admin-alert-badge">!</span></button>
     </div>
   </div>
   <div class="ticker-wrap" id="tickerBar" style="display:none">
@@ -7267,10 +7345,11 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
 </script>
 
 
+
 <script id="admin-messages-feature-v1">
 (function(){
-  if(window.__adminMessagesFeatureV1)return;
-  window.__adminMessagesFeatureV1=true;
+  if(window.__adminMessagesFeatureModalV2)return;
+  window.__adminMessagesFeatureModalV2=true;
 
   function msgEscape(s){
     return (typeof escapeHTML==='function') ? escapeHTML(s) : String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
@@ -7286,7 +7365,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
     return currentPeriod?.id||null;
   }
 
-  function removePlayerAdminMessagesBox(){
+  function removeInlinePlayerMessages(){
     document.querySelectorAll('#playerAdminMessagesBox,.msg-box[data-player-admin-messages="1"]').forEach(el=>el.remove());
   }
 
@@ -7323,48 +7402,78 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
     }
   }
 
-  async function renderPlayerAdminMessagesBox(){
-    removePlayerAdminMessagesBox();
-    if(!(await canUsePlayerAdminMessages()))return;
+  function ensurePlayerMessageModal(){
+    let modal=document.getElementById('playerAdminMessageModal');
+    if(modal)return modal;
+
+    modal=document.createElement('div');
+    modal.id='playerAdminMessageModal';
+    modal.className='msg-modal-backdrop';
+    modal.innerHTML=`<div class="msg-modal" role="dialog" aria-modal="true">
+      <div class="msg-modal-head">
+        <div>
+          <div class="msg-modal-title">✉️ Zpráva adminovi</div>
+          <div class="msg-modal-sub" id="msgModalSub">aktuální soutěž / období</div>
+        </div>
+        <button class="msg-modal-close" type="button" onclick="closePlayerAdminMessageModal()">×</button>
+      </div>
+      <div class="msg-modal-body">
+        <div class="msg-list" id="playerAdminMessageList"></div>
+      </div>
+      <div class="msg-modal-form">
+        <textarea id="playerAdminMessageText" placeholder="Napiš zprávu adminovi..." maxlength="1200"></textarea>
+        <button class="btn-a btn-g" onclick="sendPlayerAdminMessage()">Odeslat</button>
+      </div>
+    </div>`;
+    modal.addEventListener('click',e=>{
+      if(e.target===modal)window.closePlayerAdminMessageModal();
+    });
+    document.body.appendChild(modal);
+    return modal;
+  }
+
+  async function renderPlayerMessageModalContent(){
+    const modal=ensurePlayerMessageModal();
+    const sub=document.getElementById('msgModalSub');
+    if(sub)sub.textContent=`${currentComp?.name||'Soutěž'} · ${currentPeriod?.name||'aktuální období'}`;
+
+    const list=document.getElementById('playerAdminMessageList');
+    if(!list)return;
 
     const rows=await loadMyAdminMessages();
-    const box=document.createElement('div');
-    box.id='playerAdminMessagesBox';
-    box.className='msg-box';
-    box.dataset.playerAdminMessages='1';
-
     if(rows===null){
-      box.innerHTML=`<div class="msg-head"><div class="msg-title">✉️ Zpráva adminovi</div></div>
-        <div class="msg-empty">Zprávy se nepodařilo načíst. Zkontroluj SQL tabulku <strong>admin_messages</strong>.</div>`;
-    }else{
-      const list=(rows||[]).length ? rows.map(m=>`
-        <div class="msg-item ${m.sender_role==='admin'?'admin':'player'}">
-          <div class="msg-meta">
-            <span class="msg-author">${m.sender_role==='admin'?'Admin':msgEscape(m.username||currentUser.username||'Hráč')}</span>
-            <span>${msgDate(m.created_at)}</span>
-          </div>
-          <div class="msg-text">${msgEscape(m.message||'')}</div>
-        </div>
-      `).join('') : '<div class="msg-empty">Zatím tu není žádná zpráva. Napiš adminovi dotaz, připomínku nebo domluvu k soutěži.</div>';
-
-      box.innerHTML=`<div class="msg-head">
-          <div class="msg-title">✉️ Zpráva adminovi</div>
-          <div class="msg-badge">${msgEscape(currentPeriod?.name||'aktuální období')}</div>
-        </div>
-        <div class="msg-list">${list}</div>
-        <div class="msg-form">
-          <textarea id="playerAdminMessageText" placeholder="Napiš zprávu adminovi..." maxlength="1200"></textarea>
-          <button class="btn-a btn-g" onclick="sendPlayerAdminMessage()">Odeslat</button>
-        </div>`;
+      list.innerHTML='<div class="msg-empty">Zprávy se nepodařilo načíst. Zkontroluj SQL tabulku <strong>admin_messages</strong>.</div>';
+      return;
     }
 
-    const poll=document.getElementById('playerPollBox');
-    const updates=document.getElementById('updatesBox');
-    const matches=document.getElementById('matchesContent')||document.getElementById('tab-matches');
-    if(poll)poll.after(box);
-    else if(updates)updates.after(box);
-    else if(matches)matches.prepend(box);
+    list.innerHTML=(rows||[]).length ? rows.map(m=>`
+      <div class="msg-item ${m.sender_role==='admin'?'admin':'player'}">
+        <div class="msg-meta">
+          <span class="msg-author">${m.sender_role==='admin'?'Admin':msgEscape(m.username||currentUser.username||'Hráč')}</span>
+          <span>${msgDate(m.created_at)}</span>
+        </div>
+        <div class="msg-text">${msgEscape(m.message||'')}</div>
+      </div>
+    `).join('') : '<div class="msg-empty">Zatím tu není žádná zpráva. Napiš adminovi dotaz, připomínku nebo domluvu k soutěži.</div>';
+
+    const body=modal.querySelector('.msg-modal-body');
+    if(body)body.scrollTop=body.scrollHeight;
   }
+
+  window.openPlayerAdminMessageModal=async function(){
+    if(!(await canUsePlayerAdminMessages())){
+      alert('Zprávy adminovi jsou dostupné jen připojeným hráčům v aktuální soutěži.');
+      return;
+    }
+    const modal=ensurePlayerMessageModal();
+    await renderPlayerMessageModalContent();
+    modal.classList.add('open');
+    setTimeout(()=>document.getElementById('playerAdminMessageText')?.focus(),80);
+  };
+
+  window.closePlayerAdminMessageModal=function(){
+    document.getElementById('playerAdminMessageModal')?.classList.remove('open');
+  };
 
   window.sendPlayerAdminMessage=async function(){
     if(!currentUser||!currentComp)return;
@@ -7385,12 +7494,42 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
       const {error}=await sb.from('admin_messages').insert(payload);
       if(error)throw error;
       if(ta)ta.value='';
-      await renderPlayerAdminMessagesBox();
-      alert('Zpráva odeslána adminovi.');
+      await renderPlayerMessageModalContent();
+      updateMessageNavButton();
     }catch(e){
       alert('Zprávu se nepodařilo odeslat. Zkontroluj SQL tabulku admin_messages. Chyba: '+(e.message||e));
     }
   };
+
+  async function updateMessageNavButton(){
+    removeInlinePlayerMessages();
+
+    let btn=document.getElementById('playerMsgNavBtn');
+    if(!btn){
+      const leaderboardBtn=Array.from(document.querySelectorAll('.site-nav .nav-btn')).find(b=>(b.textContent||'').toLowerCase().includes('žebříček'));
+      if(!leaderboardBtn)return;
+      btn=document.createElement('button');
+      btn.id='playerMsgNavBtn';
+      btn.className='nav-btn msg-nav-btn';
+      btn.type='button';
+      btn.innerHTML='✉️ Zpráva';
+      btn.onclick=()=>window.openPlayerAdminMessageModal();
+      leaderboardBtn.after(btn);
+    }
+
+    const allowed=await canUsePlayerAdminMessages();
+    btn.style.display=allowed?'inline-flex':'none';
+
+    if(allowed){
+      try{
+        const rows=await loadMyAdminMessages();
+        const hasAdminReply=(rows||[]).some(m=>m.sender_role==='admin');
+        btn.innerHTML=`✉️ Zpráva${hasAdminReply?'<span class="msg-nav-dot"></span>':''}`;
+      }catch(e){
+        btn.innerHTML='✉️ Zpráva';
+      }
+    }
+  }
 
   async function loadAdminMessages(){
     if(!currentComp)return [];
@@ -7450,6 +7589,8 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
     }
 
     box.innerHTML+=groups.map(g=>{
+      const safeUserId=msgEscape(g.user_id||'');
+      const safeUsername=msgEscape(g.username);
       const msgs=g.items.map(m=>`
         <div class="msg-item ${m.sender_role==='admin'?'admin':'player'}">
           <div class="msg-meta">
@@ -7463,15 +7604,15 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
       return `<div class="msg-admin-thread">
         <div class="msg-admin-thread-head">
           <div>
-            <div class="msg-admin-thread-title">${dot}${msgEscape(g.username)}</div>
+            <div class="msg-admin-thread-title">${dot}${safeUsername}</div>
             <div class="msg-admin-thread-sub">${g.items.length} zpráv${g.unread?` · ${g.unread} nových`:''}</div>
           </div>
-          <button class="btn-a" onclick="markAdminMessagesRead('${g.user_id||''}')">Označit přečtené</button>
+          <button class="btn-a" onclick="markAdminMessagesRead('${safeUserId}')">Označit přečtené</button>
         </div>
         <div class="msg-list">${msgs}</div>
         <div class="msg-admin-reply">
-          <textarea id="adminReply_${g.user_id}" placeholder="Odpověď hráči ${msgEscape(g.username)}..." maxlength="1200"></textarea>
-          <button class="btn-a btn-g" onclick="sendAdminReply('${g.user_id||''}','${msgEscape(g.username).replace(/'/g,'&#39;')}')">Odpovědět</button>
+          <textarea id="adminReply_${safeUserId}" placeholder="Odpověď hráči ${safeUsername}..." maxlength="1200"></textarea>
+          <button class="btn-a btn-g" onclick="sendAdminReply('${safeUserId}','${safeUsername}')">Odpovědět</button>
         </div>
       </div>`;
     }).join('');
@@ -7525,8 +7666,8 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
   function schedulePlayerMessages(){
     clearTimeout(window.__adminMsgPlayerTimer1);
     clearTimeout(window.__adminMsgPlayerTimer2);
-    window.__adminMsgPlayerTimer1=setTimeout(renderPlayerAdminMessagesBox,350);
-    window.__adminMsgPlayerTimer2=setTimeout(renderPlayerAdminMessagesBox,900);
+    window.__adminMsgPlayerTimer1=setTimeout(updateMessageNavButton,250);
+    window.__adminMsgPlayerTimer2=setTimeout(updateMessageNavButton,800);
   }
 
   function scheduleAdminMessages(){
@@ -7559,6 +7700,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
     window.renderAdmin=async function(){
       const res=await oldRenderAdmin.apply(this,arguments);
       scheduleAdminMessages();
+      schedulePlayerMessages();
       return res;
     };
   }
@@ -7573,9 +7715,176 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
     };
   }
 
+  const oldSwitchTab=window.switchTab;
+  if(typeof oldSwitchTab==='function'){
+    window.switchTab=function(){
+      const res=oldSwitchTab.apply(this,arguments);
+      schedulePlayerMessages();
+      return res;
+    };
+  }
+
   document.addEventListener('DOMContentLoaded',function(){
-    setTimeout(renderPlayerAdminMessagesBox,1200);
+    setTimeout(updateMessageNavButton,900);
+    setTimeout(updateMessageNavButton,1500);
     setTimeout(renderAdminMessagesBox,1400);
+  });
+})();
+</script>
+
+
+<script id="admin-alert-badge-v1">
+(function(){
+  if(window.__adminAlertBadgeV1)return;
+  window.__adminAlertBadgeV1=true;
+
+  async function getAdminAlertCounts(){
+    const counts={messages:0,requests:0,total:0};
+    if(!currentUser||currentUser.username!==ADMIN_USERNAME||!currentComp)return counts;
+
+    try{
+      let msgQ=sb.from('admin_messages')
+        .select('id')
+        .eq('competition_id',currentComp.id)
+        .eq('sender_role','player')
+        .eq('is_read',false);
+      if(currentPeriod?.id)msgQ=msgQ.eq('period_id',currentPeriod.id);
+      const{data,error}=await msgQ;
+      if(!error)counts.messages=(data||[]).length;
+    }catch(e){
+      console.warn('admin alert messages:',e);
+    }
+
+    try{
+      let reqQ=sb.from('competition_join_requests')
+        .select('id')
+        .eq('status','pending')
+        .eq('competition_id',currentComp.id);
+      if(currentPeriod?.id)reqQ=reqQ.eq('period_id',currentPeriod.id);
+      const{data,error}=await reqQ;
+      if(!error)counts.requests=(data||[]).length;
+    }catch(e){
+      console.warn('admin alert requests:',e);
+    }
+
+    counts.total=counts.messages+counts.requests;
+    return counts;
+  }
+
+  async function updateAdminAlertBadge(){
+    const btn=document.getElementById('adminNavBtn');
+    if(!btn)return;
+
+    let badge=btn.querySelector('.admin-alert-badge');
+    if(!badge){
+      badge=document.createElement('span');
+      badge.className='admin-alert-badge';
+      badge.textContent='!';
+      btn.appendChild(badge);
+    }
+
+    if(!currentUser||currentUser.username!==ADMIN_USERNAME||!currentComp){
+      btn.classList.remove('has-admin-alert');
+      btn.removeAttribute('title');
+      return;
+    }
+
+    const counts=await getAdminAlertCounts();
+    if(counts.total>0){
+      btn.classList.add('has-admin-alert');
+      const parts=[];
+      if(counts.messages)parts.push(`${counts.messages} nepřečtených zpráv`);
+      if(counts.requests)parts.push(`${counts.requests} žádostí o vstup`);
+      btn.title=parts.join(' · ');
+    }else{
+      btn.classList.remove('has-admin-alert');
+      btn.removeAttribute('title');
+    }
+  }
+
+  window.updateAdminAlertBadge=updateAdminAlertBadge;
+
+  function scheduleAdminAlertBadge(){
+    clearTimeout(window.__adminAlertBadgeT1);
+    clearTimeout(window.__adminAlertBadgeT2);
+    window.__adminAlertBadgeT1=setTimeout(updateAdminAlertBadge,350);
+    window.__adminAlertBadgeT2=setTimeout(updateAdminAlertBadge,1100);
+  }
+  window.scheduleAdminAlertBadge=scheduleAdminAlertBadge;
+
+  const oldRenderAdmin=window.renderAdmin;
+  if(typeof oldRenderAdmin==='function'&&!window.__adminAlertRenderWrapped){
+    window.__adminAlertRenderWrapped=true;
+    window.renderAdmin=async function(){
+      const res=await oldRenderAdmin.apply(this,arguments);
+      scheduleAdminAlertBadge();
+      return res;
+    };
+  }
+
+  const oldSwitchCompetitionPeriod=window.switchCompetitionPeriod;
+  if(typeof oldSwitchCompetitionPeriod==='function'&&!window.__adminAlertPeriodWrapped){
+    window.__adminAlertPeriodWrapped=true;
+    window.switchCompetitionPeriod=async function(){
+      const res=await oldSwitchCompetitionPeriod.apply(this,arguments);
+      scheduleAdminAlertBadge();
+      return res;
+    };
+  }
+
+  const oldSwitchCompetition=window.switchCompetition;
+  if(typeof oldSwitchCompetition==='function'&&!window.__adminAlertCompWrapped){
+    window.__adminAlertCompWrapped=true;
+    window.switchCompetition=async function(){
+      const res=await oldSwitchCompetition.apply(this,arguments);
+      scheduleAdminAlertBadge();
+      return res;
+    };
+  }
+
+  const oldSwitchTab=window.switchTab;
+  if(typeof oldSwitchTab==='function'&&!window.__adminAlertTabWrapped){
+    window.__adminAlertTabWrapped=true;
+    window.switchTab=function(){
+      const res=oldSwitchTab.apply(this,arguments);
+      scheduleAdminAlertBadge();
+      return res;
+    };
+  }
+
+  const oldDecideJoinRequest=window.decideJoinRequest;
+  if(typeof oldDecideJoinRequest==='function'&&!window.__adminAlertJoinWrapped){
+    window.__adminAlertJoinWrapped=true;
+    window.decideJoinRequest=async function(){
+      const res=await oldDecideJoinRequest.apply(this,arguments);
+      scheduleAdminAlertBadge();
+      return res;
+    };
+  }
+
+  const oldMarkRead=window.markAdminMessagesRead;
+  if(typeof oldMarkRead==='function'&&!window.__adminAlertReadWrapped){
+    window.__adminAlertReadWrapped=true;
+    window.markAdminMessagesRead=async function(){
+      const res=await oldMarkRead.apply(this,arguments);
+      scheduleAdminAlertBadge();
+      return res;
+    };
+  }
+
+  const oldSendReply=window.sendAdminReply;
+  if(typeof oldSendReply==='function'&&!window.__adminAlertReplyWrapped){
+    window.__adminAlertReplyWrapped=true;
+    window.sendAdminReply=async function(){
+      const res=await oldSendReply.apply(this,arguments);
+      scheduleAdminAlertBadge();
+      return res;
+    };
+  }
+
+  document.addEventListener('DOMContentLoaded',function(){
+    scheduleAdminAlertBadge();
+    setInterval(updateAdminAlertBadge,30000);
   });
 })();
 </script>
