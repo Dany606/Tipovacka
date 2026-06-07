@@ -1787,6 +1787,122 @@ img.reward-admin-img{
 }
 </style>
 
+
+<style id="poll-feature-v1">
+.poll-box{
+  background:rgba(22,27,34,.90);
+  border:1px solid rgba(227,179,65,.34);
+  backdrop-filter:blur(7px);
+  border-radius:var(--radius);
+  padding:.9rem 1rem;
+  margin:-.15rem 0 .9rem;
+  box-shadow:0 0 18px rgba(227,179,65,.07);
+}
+.poll-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:.75rem;
+}
+.poll-title{
+  font-size:12px;
+  font-weight:900;
+  color:var(--gold);
+  text-transform:uppercase;
+  letter-spacing:1px;
+}
+.poll-badge{
+  font-size:10px;
+  font-weight:900;
+  color:var(--gold);
+  border:1px solid rgba(227,179,65,.34);
+  background:rgba(227,179,65,.10);
+  border-radius:999px;
+  padding:4px 8px;
+}
+.poll-question{
+  color:var(--text);
+  font-weight:800;
+  font-size:16px;
+  margin-bottom:.75rem;
+  line-height:1.35;
+}
+.poll-options{
+  display:grid;
+  gap:8px;
+}
+.poll-option-btn{
+  width:100%;
+  border:1px solid rgba(139,148,158,.25);
+  background:rgba(13,17,23,.72);
+  color:var(--text);
+  border-radius:10px;
+  padding:.75rem .85rem;
+  text-align:left;
+  font-weight:800;
+  cursor:pointer;
+  transition:.15s;
+}
+.poll-option-btn:hover{
+  border-color:rgba(227,179,65,.48);
+  background:rgba(227,179,65,.10);
+}
+.poll-result-row{
+  display:grid;
+  grid-template-columns:1fr 54px;
+  gap:10px;
+  align-items:center;
+  padding:.55rem .65rem;
+  border:1px solid rgba(139,148,158,.18);
+  background:rgba(13,17,23,.54);
+  border-radius:10px;
+}
+.poll-result-label{
+  color:var(--text);
+  font-weight:800;
+  margin-bottom:5px;
+}
+.poll-bar{
+  height:7px;
+  border-radius:999px;
+  background:rgba(139,148,158,.18);
+  overflow:hidden;
+}
+.poll-bar-fill{
+  height:100%;
+  border-radius:999px;
+  background:linear-gradient(90deg,rgba(227,179,65,.9),rgba(56,139,253,.85));
+}
+.poll-percent{
+  color:var(--gold);
+  font-weight:900;
+  text-align:right;
+  font-variant-numeric:tabular-nums;
+}
+.poll-note{
+  color:var(--text3);
+  font-size:12px;
+  margin-top:.65rem;
+}
+.poll-admin-options{
+  display:grid;
+  gap:8px;
+}
+.poll-admin-option-row{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:8px;
+  align-items:center;
+}
+.poll-admin-small{
+  color:var(--text3);
+  font-size:12px;
+  line-height:1.4;
+  margin-top:8px;
+}
+</style>
+
 </head>
 <body>
 
@@ -6598,6 +6714,367 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
 
 
 
+
+
+<script id="poll-feature-v1">
+(function(){
+  if(window.__pollFeatureV1)return;
+  window.__pollFeatureV1=true;
+
+  function pollKey(comp=currentComp,period=currentPeriod){
+    if(!comp?.id)return null;
+    return 'poll_'+comp.id+'_'+(period?.id||'current');
+  }
+
+  function pollStorageKey(){
+    return pollKey() ? pollKey()+'_setting' : null;
+  }
+
+  function defaultPollSetting(){
+    return {
+      enabled:false,
+      question:'',
+      options:['','','',''],
+      created_at:new Date().toISOString(),
+      updated_at:new Date().toISOString()
+    };
+  }
+
+  function cleanPollSetting(raw){
+    const d=raw||{};
+    const opts=(Array.isArray(d.options)?d.options:[])
+      .map(x=>String(x||'').trim())
+      .filter(Boolean)
+      .slice(0,5);
+    return {
+      enabled:!!d.enabled,
+      question:String(d.question||'').trim(),
+      options:opts,
+      created_at:d.created_at||new Date().toISOString(),
+      updated_at:d.updated_at||new Date().toISOString()
+    };
+  }
+
+  async function loadPollSetting(){
+    const key=pollKey();
+    if(!key)return defaultPollSetting();
+
+    let local=null;
+    try{
+      const cached=localStorage.getItem(pollStorageKey());
+      if(cached)local=JSON.parse(cached);
+    }catch(e){}
+
+    try{
+      const {data,error}=await sb.from('site_settings').select('value').eq('key',key).maybeSingle();
+      if(error)throw error;
+      if(data?.value){
+        const parsed=typeof data.value==='string'?JSON.parse(data.value):data.value;
+        const setting=cleanPollSetting(parsed);
+        try{localStorage.setItem(pollStorageKey(),JSON.stringify(setting));}catch(e){}
+        return setting;
+      }
+    }catch(e){
+      console.warn('poll setting load:',e);
+    }
+
+    return cleanPollSetting(local||defaultPollSetting());
+  }
+
+  async function savePollSetting(setting){
+    const key=pollKey();
+    if(!key)throw new Error('Není vybraná soutěž.');
+    const clean=cleanPollSetting({...setting,updated_at:new Date().toISOString()});
+    const value=JSON.stringify(clean);
+    localStorage.setItem(pollStorageKey(),value);
+    const {error}=await sb.from('site_settings').upsert({key,value,updated_at:new Date().toISOString()},{onConflict:'key'});
+    if(error)throw error;
+    return clean;
+  }
+
+  async function deletePollVotes(){
+    const key=pollKey();
+    if(!key)return;
+    try{await sb.from('poll_votes').delete().eq('poll_key',key);}catch(e){console.warn('poll votes delete:',e);}
+  }
+
+  async function loadPollVotes(){
+    const key=pollKey();
+    if(!key)return [];
+    try{
+      const {data,error}=await sb.from('poll_votes').select('*').eq('poll_key',key);
+      if(error)throw error;
+      return data||[];
+    }catch(e){
+      console.warn('poll votes load:',e);
+      return [];
+    }
+  }
+
+  async function canSeePoll(){
+    if(!currentComp||!currentUser)return false;
+    if(typeof canAccessCurrentCompetition==='function'){
+      try{
+        const ok=await canAccessCurrentCompetition();
+        if(!ok)return false;
+      }catch(e){}
+    }
+    if(typeof isPrivateCompetition==='function'&&isPrivateCompetition(currentComp)){
+      return currentUser?.username===ADMIN_USERNAME || (currentMembership&&currentMembership.active!==false);
+    }
+    return true;
+  }
+
+  function pollMountPoint(){
+    return document.getElementById('updatesBox') || document.getElementById('matchesContent') || document.getElementById('tab-matches');
+  }
+
+  function removePollBox(){
+    document.getElementById('playerPollBox')?.remove();
+  }
+
+  function escapePoll(s){
+    return (typeof escapeHTML==='function') ? escapeHTML(s) : String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  function formatPollDate(v){
+    if(typeof formatUpdateDate==='function')return formatUpdateDate(v);
+    try{return new Date(v).toLocaleDateString('cs-CZ');}catch(e){return '';}
+  }
+
+  async function renderPollBox(){
+    removePollBox();
+    if(!(await canSeePoll()))return;
+
+    const setting=await loadPollSetting();
+    if(!setting.enabled||!setting.question||setting.options.length<2)return;
+
+    const votes=await loadPollVotes();
+    const myVote=(votes||[]).find(v=>String(v.user_id)===String(currentUser?.id));
+    const counts=setting.options.map((_,i)=>(votes||[]).filter(v=>Number(v.option_index)===i).length);
+    const total=counts.reduce((a,b)=>a+b,0);
+
+    const box=document.createElement('div');
+    box.id='playerPollBox';
+    box.className='poll-box';
+    const votedNote=myVote?`Hlasoval/a jsi pro: <strong>${escapePoll(setting.options[Number(myVote.option_index)]||'')}</strong>`:'Hlasovat může každý schválený hráč jednou.';
+    const inner=myVote ? `
+      <div class="poll-options">
+        ${setting.options.map((opt,i)=>{
+          const pct=total?Math.round(counts[i]/total*100):0;
+          return `<div class="poll-result-row">
+            <div>
+              <div class="poll-result-label">${escapePoll(opt)} · ${counts[i]} hlasů</div>
+              <div class="poll-bar"><div class="poll-bar-fill" style="width:${pct}%"></div></div>
+            </div>
+            <div class="poll-percent">${pct}%</div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="poll-note">${votedNote}</div>
+    ` : `
+      <div class="poll-options">
+        ${setting.options.map((opt,i)=>`<button class="poll-option-btn" type="button" onclick="votePoll(${i})">${escapePoll(opt)}</button>`).join('')}
+      </div>
+      <div class="poll-note">${votedNote}</div>
+    `;
+
+    box.innerHTML=`
+      <div class="poll-head">
+        <div class="poll-title">📊 Anketa pro hráče</div>
+        <div class="poll-badge">${escapePoll(currentPeriod?.name||'aktuální období')}</div>
+      </div>
+      <div class="poll-question">${escapePoll(setting.question)}</div>
+      ${inner}
+    `;
+
+    const mount=pollMountPoint();
+    if(!mount)return;
+    if(mount.id==='updatesBox')mount.after(box);
+    else mount.prepend(box);
+  }
+
+  window.votePoll=async function(optionIndex){
+    if(!currentUser||!currentComp)return;
+    const setting=await loadPollSetting();
+    if(!setting.enabled||!setting.options[optionIndex])return;
+    const key=pollKey();
+    const payload={
+      poll_key:key,
+      competition_id:currentComp.id,
+      period_id:currentPeriod?.id||null,
+      user_id:currentUser.id,
+      username:currentUser.username||'',
+      option_index:Number(optionIndex),
+      created_at:new Date().toISOString(),
+      updated_at:new Date().toISOString()
+    };
+
+    try{
+      const {error}=await sb.from('poll_votes').upsert(payload,{onConflict:'poll_key,user_id'});
+      if(error)throw error;
+      await renderPollBox();
+    }catch(e){
+      alert('Hlas se nepodařilo uložit. Zkontroluj SQL tabulku poll_votes. Chyba: '+(e.message||e));
+    }
+  };
+
+  function adminPollBoxHtml(setting){
+    const opts=[...setting.options];
+    while(opts.length<5)opts.push('');
+    return `<div class="admin-box" id="adminPollBox">
+      <h3>Anketa pro hráče</h3>
+      <div class="field">
+        <label>Zobrazovat anketu v aktuální soutěži / období</label>
+        <select id="pollEnabled">
+          <option value="1" ${setting.enabled?'selected':''}>Ano, zobrazit</option>
+          <option value="0" ${!setting.enabled?'selected':''}>Ne, skrýt</option>
+        </select>
+      </div>
+      <div class="field"><label>Otázka ankety</label><input id="pollQuestion" type="text" value="${escapePoll(setting.question)}" placeholder="Např. Jakou odměnu chcete příště?"></div>
+      <div class="poll-admin-options">
+        ${opts.map((opt,i)=>`<div class="poll-admin-option-row">
+          <input id="pollOpt${i}" type="text" value="${escapePoll(opt)}" placeholder="Možnost ${i+1}">
+          ${i>=2?`<button class="btn-a" type="button" onclick="document.getElementById('pollOpt${i}').value=''">Vymazat</button>`:''}
+        </div>`).join('')}
+      </div>
+      <div class="admin-editor-actions" style="margin-top:.8rem">
+        <button class="btn-a btn-g" onclick="savePollFromAdmin()">Uložit anketu</button>
+        <button class="btn-a" onclick="closePollFromAdmin()">Skrýt anketu</button>
+        <button class="btn-a" style="background:#5c1f1f" onclick="resetPollVotesFromAdmin()">Smazat hlasy</button>
+      </div>
+      <div class="poll-admin-small">Anketa je vždy jen pro aktuální soutěž a období. U soukromé soutěže ji uvidí pouze schválení hráči.</div>
+      <div id="adminPollResults"></div>
+    </div>`;
+  }
+
+  async function renderPollAdminBox(){
+    if(!currentUser||currentUser.username!==ADMIN_USERNAME||!currentComp)return;
+    document.getElementById('adminPollBox')?.remove();
+
+    const setting=await loadPollSetting();
+    const wrapper=document.createElement('div');
+    wrapper.innerHTML=adminPollBoxHtml(setting);
+    const box=wrapper.firstElementChild;
+
+    const target=document.querySelector('.admin-tab-panel[data-admin-panel="matches"]') || document.getElementById('adminContent');
+    if(!target)return;
+    target.prepend(box);
+    await renderPollAdminResults();
+  }
+
+  async function renderPollAdminResults(){
+    const el=document.getElementById('adminPollResults');
+    if(!el)return;
+    const setting=await loadPollSetting();
+    const votes=await loadPollVotes();
+    if(!setting.question||setting.options.length<2){
+      el.innerHTML='<div class="update-empty" style="margin-top:10px">Anketa zatím není nastavená.</div>';
+      return;
+    }
+    const counts=setting.options.map((_,i)=>(votes||[]).filter(v=>Number(v.option_index)===i).length);
+    const total=counts.reduce((a,b)=>a+b,0);
+    el.innerHTML=`<div class="admin-update-preview" style="margin-top:10px">
+      ${setting.options.map((opt,i)=>{
+        const pct=total?Math.round(counts[i]/total*100):0;
+        return `<div class="update-row" style="grid-template-columns:1fr 70px">
+          <strong>${escapePoll(opt)}</strong>
+          <span style="text-align:right;color:var(--gold);font-weight:900">${counts[i]} · ${pct}%</span>
+        </div>`;
+      }).join('')}
+      <div class="poll-admin-small">Celkem hlasů: ${total}</div>
+    </div>`;
+  }
+
+  window.savePollFromAdmin=async function(){
+    if(!currentComp){alert('Není vybraná soutěž.');return;}
+    const enabled=document.getElementById('pollEnabled')?.value==='1';
+    const question=(document.getElementById('pollQuestion')?.value||'').trim();
+    const options=[0,1,2,3,4].map(i=>(document.getElementById('pollOpt'+i)?.value||'').trim()).filter(Boolean);
+    if(enabled && (!question||options.length<2)){
+      alert('Pro zapnutou anketu vyplň otázku a alespoň 2 možnosti.');
+      return;
+    }
+    try{
+      await savePollSetting({enabled,question,options});
+      await renderPollAdminBox();
+      await renderPollBox();
+      alert('Anketa uložena.');
+    }catch(e){
+      alert('Anketu se nepodařilo uložit: '+(e.message||e));
+    }
+  };
+
+  window.closePollFromAdmin=async function(){
+    try{
+      const setting=await loadPollSetting();
+      setting.enabled=false;
+      await savePollSetting(setting);
+      await renderPollAdminBox();
+      removePollBox();
+      alert('Anketa skrytá.');
+    }catch(e){
+      alert('Anketu se nepodařilo skrýt: '+(e.message||e));
+    }
+  };
+
+  window.resetPollVotesFromAdmin=async function(){
+    if(!confirm('Smazat všechny hlasy této ankety v aktuálním období?'))return;
+    await deletePollVotes();
+    await renderPollAdminResults();
+    await renderPollBox();
+    alert('Hlasy smazány.');
+  };
+
+  function schedulePollRender(){
+    setTimeout(renderPollBox,250);
+    setTimeout(renderPollBox,800);
+  }
+
+  const oldRenderMatches=window.renderMatches;
+  if(typeof oldRenderMatches==='function'){
+    window.renderMatches=async function(){
+      const res=await oldRenderMatches.apply(this,arguments);
+      schedulePollRender();
+      return res;
+    };
+  }
+
+  const oldLoadUpdates=window.loadUpdates;
+  if(typeof oldLoadUpdates==='function'){
+    window.loadUpdates=async function(){
+      const res=await oldLoadUpdates.apply(this,arguments);
+      schedulePollRender();
+      return res;
+    };
+  }
+
+  const oldRenderAdmin=window.renderAdmin;
+  if(typeof oldRenderAdmin==='function'){
+    window.renderAdmin=async function(){
+      const res=await oldRenderAdmin.apply(this,arguments);
+      setTimeout(renderPollAdminBox,350);
+      setTimeout(renderPollAdminBox,900);
+      return res;
+    };
+  }
+
+  const oldSwitchCompetitionPeriod=window.switchCompetitionPeriod;
+  if(typeof oldSwitchCompetitionPeriod==='function'){
+    window.switchCompetitionPeriod=async function(){
+      const res=await oldSwitchCompetitionPeriod.apply(this,arguments);
+      schedulePollRender();
+      setTimeout(renderPollAdminBox,500);
+      return res;
+    };
+  }
+
+  document.addEventListener('DOMContentLoaded',function(){
+    setTimeout(renderPollBox,1000);
+    setTimeout(renderPollAdminBox,1200);
+  });
+})();
+</script>
 
 </body>
 </html>
