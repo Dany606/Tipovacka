@@ -1960,13 +1960,26 @@ img.reward-admin-img{
 }
 .msg-nav-btn .msg-nav-dot{
   position:absolute;
-  top:6px;
-  right:8px;
-  width:8px;
-  height:8px;
+  top:-7px;
+  right:-7px;
+  width:19px;
+  height:19px;
   border-radius:50%;
-  background:var(--gold);
-  box-shadow:0 0 10px rgba(227,179,65,.65);
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  background:linear-gradient(135deg,#050505 0%,#2a0505 42%,#f85149 100%);
+  color:#fff;
+  border:2px solid #ff7b72;
+  box-shadow:0 0 0 2px rgba(0,0,0,.55),0 0 14px rgba(248,81,73,.8);
+  font-size:13px;
+  font-weight:1000;
+  line-height:1;
+  z-index:2;
+  animation:adminAlertPulse 1.15s infinite;
+}
+.msg-nav-btn .msg-nav-dot::before{
+  content:"!";
 }
 .msg-modal-backdrop{
   position:fixed;
@@ -2156,6 +2169,38 @@ img.reward-admin-img{
 @keyframes adminAlertPulse{
   0%,100%{transform:scale(1);filter:brightness(1)}
   50%{transform:scale(1.12);filter:brightness(1.28)}
+}
+</style>
+
+
+<style id="admin-direct-message-extra-v1">
+.msg-admin-compose{
+  border:1px solid rgba(56,139,253,.24);
+  background:rgba(56,139,253,.07);
+  border-radius:12px;
+  padding:.75rem;
+  margin-bottom:.8rem;
+}
+.msg-admin-compose-title{
+  color:#79c0ff;
+  font-size:12px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.8px;
+  margin-bottom:.55rem;
+}
+.msg-admin-compose-grid{
+  display:grid;
+  grid-template-columns:220px 1fr auto;
+  gap:8px;
+  align-items:start;
+}
+.msg-admin-compose-grid textarea{
+  min-height:42px;
+  resize:vertical;
+}
+@media(max-width:820px){
+  .msg-admin-compose-grid{grid-template-columns:1fr}
 }
 </style>
 
@@ -7402,6 +7447,22 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
     }
   }
 
+  async function markPlayerAdminRepliesRead(){
+    if(!currentComp||!currentUser)return;
+    try{
+      let q=sb.from('admin_messages')
+        .update({is_read:true})
+        .eq('competition_id',currentComp.id)
+        .eq('user_id',currentUser.id)
+        .eq('sender_role','admin')
+        .eq('is_read',false);
+      if(msgPeriodId())q=q.eq('period_id',msgPeriodId());
+      await q;
+    }catch(e){
+      console.warn('mark player admin replies read:',e);
+    }
+  }
+
   function ensurePlayerMessageModal(){
     let modal=document.getElementById('playerAdminMessageModal');
     if(modal)return modal;
@@ -7467,6 +7528,8 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
     }
     const modal=ensurePlayerMessageModal();
     await renderPlayerMessageModalContent();
+    await markPlayerAdminRepliesRead();
+    updateMessageNavButton();
     modal.classList.add('open');
     setTimeout(()=>document.getElementById('playerAdminMessageText')?.focus(),80);
   };
@@ -7523,8 +7586,8 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
     if(allowed){
       try{
         const rows=await loadMyAdminMessages();
-        const hasAdminReply=(rows||[]).some(m=>m.sender_role==='admin');
-        btn.innerHTML=`✉️ Zpráva${hasAdminReply?'<span class="msg-nav-dot"></span>':''}`;
+        const hasUnreadAdminReply=(rows||[]).some(m=>m.sender_role==='admin' && !m.is_read);
+        btn.innerHTML=`✉️ Zpráva${hasUnreadAdminReply?'<span class="msg-nav-dot"></span>':''}`;
       }catch(e){
         btn.innerHTML='✉️ Zpráva';
       }
@@ -7560,6 +7623,83 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
     return Object.values(map).sort((a,b)=>new Date(b.last||0)-new Date(a.last||0));
   }
 
+
+  async function loadAdminMessagePlayers(){
+    try{
+      if(typeof getCurrentCompetitionAdminPlayers==='function'){
+        const {data:users}=await sb.from('users').select('*');
+        const players=await getCurrentCompetitionAdminPlayers(users||[]);
+        return (players||[]).filter(p=>p.user_id&&p.username);
+      }
+    }catch(e){console.warn('admin message players via helper:',e);}
+
+    try{
+      let q=sb.from('competition_players')
+        .select('user_id,active')
+        .eq('competition_id',currentComp.id);
+      if(msgPeriodId())q=q.eq('period_id',msgPeriodId());
+      const {data:members,error}=await q;
+      if(error)throw error;
+      const ids=(members||[]).filter(m=>m.active!==false&&m.user_id).map(m=>m.user_id);
+      if(!ids.length)return [];
+      const {data:users,error:userErr}=await sb.from('users').select('id,username').in('id',ids);
+      if(userErr)throw userErr;
+      return (users||[]).map(u=>({user_id:u.id,username:u.username}));
+    }catch(e){
+      console.warn('admin message players fallback:',e);
+      return [];
+    }
+  }
+
+  async function renderAdminDirectCompose(){
+    const players=await loadAdminMessagePlayers();
+    if(!players.length){
+      return `<div class="msg-admin-compose">
+        <div class="msg-admin-compose-title">✉️ Poslat zprávu hráči</div>
+        <div class="msg-empty">V aktuální soutěži / období nejsou žádní schválení hráči.</div>
+      </div>`;
+    }
+    const opts=players.map(p=>`<option value="${msgEscape(p.user_id)}" data-username="${msgEscape(p.username)}">${msgEscape(p.username)}</option>`).join('');
+    return `<div class="msg-admin-compose">
+      <div class="msg-admin-compose-title">✉️ Poslat zprávu hráči</div>
+      <div class="msg-admin-compose-grid">
+        <select id="adminDirectMsgUser">${opts}</select>
+        <textarea id="adminDirectMsgText" placeholder="Napiš hráči zprávu..." maxlength="1200"></textarea>
+        <button class="btn-a btn-g" onclick="sendAdminDirectMessage()">Odeslat</button>
+      </div>
+    </div>`;
+  }
+
+  window.sendAdminDirectMessage=async function(){
+    if(!currentUser||currentUser.username!==ADMIN_USERNAME||!currentComp)return;
+    const sel=document.getElementById('adminDirectMsgUser');
+    const ta=document.getElementById('adminDirectMsgText');
+    const userId=sel?.value||'';
+    const username=(sel?.selectedOptions?.[0]?.dataset?.username||sel?.selectedOptions?.[0]?.textContent||'Hráč').trim();
+    const text=(ta?.value||'').trim();
+    if(!userId){alert('Vyber hráče.');return;}
+    if(!text){alert('Napiš zprávu.');return;}
+    try{
+      const payload={
+        competition_id:currentComp.id,
+        period_id:msgPeriodId(),
+        user_id:userId,
+        username,
+        sender_role:'admin',
+        message:text,
+        is_read:false,
+        created_at:new Date().toISOString()
+      };
+      const {error}=await sb.from('admin_messages').insert(payload);
+      if(error)throw error;
+      if(ta)ta.value='';
+      await renderAdminMessagesBox();
+      alert('Zpráva hráči odeslána.');
+    }catch(e){
+      alert('Zprávu se nepodařilo odeslat: '+(e.message||e));
+    }
+  };
+
   async function renderAdminMessagesBox(){
     if(!currentUser||currentUser.username!==ADMIN_USERNAME||!currentComp)return;
     document.getElementById('adminMessagesBox')?.remove();
@@ -7570,10 +7710,11 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
     if(!panel)return;
 
     const rows=await loadAdminMessages();
+    const compose=await renderAdminDirectCompose();
     const box=document.createElement('div');
     box.className='admin-box';
     box.id='adminMessagesBox';
-    box.innerHTML='<h3>Zprávy od hráčů</h3>';
+    box.innerHTML='<h3>Zprávy od hráčů</h3>'+compose;
 
     if(rows===null){
       box.innerHTML+='<div class="empty">Zprávy se nepodařilo načíst. Zkontroluj SQL tabulku <strong>admin_messages</strong>.</div>';
