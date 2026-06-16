@@ -2829,7 +2829,7 @@ function startMatchLockRefresh(){
   tick();
   // Běží častěji než 1× za sekundu, aby se vizuál trefoval přesně na změnu vteřiny
   // a odpočet nepůsobil zaseknutě ani při drobném zpoždění prohlížeče.
-  matchLockRefreshTimer=setInterval(tick,250);
+  matchLockRefreshTimer=setInterval(tick,1000);
 }
 
 function isPointsCompetition(comp=currentComp){
@@ -3456,7 +3456,7 @@ async function renderAdminManualUpdatesPreview(){
   const el=document.getElementById('adminManualUpdatesList');
   if(!el||!currentComp)return;
   try{
-    let q=sb.from('updates').select('*').eq('competition_id',currentComp.id).order('created_at',{ascending:false}).limit(50);
+    let q=sb.from('updates').select('*').eq('competition_id',currentComp.id).order('created_at',{ascending:false}).limit(15);
     if(currentPeriod?.id)q=q.eq('period_id',currentPeriod.id);
     const{data,error}=await q;
     if(error){throw error;}
@@ -4161,7 +4161,7 @@ async function loadUpdates(){
   let rows=isPointsCompetition()?[]:localCreditUpdates();
 
   try{
-    let q=sb.from('updates').select('*').order('created_at',{ascending:false}).limit(50);
+    let q=sb.from('updates').select('*').order('created_at',{ascending:false}).limit(15);
     if(currentComp?.id)q=q.eq('competition_id',currentComp.id);
     if(currentPeriod?.id)q=q.eq('period_id',currentPeriod.id);
 
@@ -8045,8 +8045,41 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeJoinSupportQr()
 
   document.addEventListener('DOMContentLoaded',function(){
     scheduleAdminAlertBadge();
-    setInterval(updateAdminAlertBadge,30000);
+    setInterval(updateAdminAlertBadge,120000);
   });
+})();
+</script>
+
+
+<script id="egress-saver-step1-v1">
+(function(){
+  if(window.__egressSaverStep1)return;
+  window.__egressSaverStep1=true;
+
+  function wrapThrottle(name,ms){
+    const old=window[name];
+    if(typeof old!=='function')return;
+    let last=0;
+    let inFlight=null;
+    window[name]=async function(){
+      const now=Date.now();
+      if(inFlight)return inFlight;
+      if(now-last<ms)return null;
+      last=now;
+      inFlight=Promise.resolve(old.apply(this,arguments)).finally(()=>{inFlight=null;});
+      return inFlight;
+    };
+  }
+
+  // Ticker tahá users/matches/tips a není potřeba ho volat víckrát při každém překreslení.
+  wrapThrottle('loadTicker',60000);
+
+  // Vykřičník u Admin/Zpráva stačí kontrolovat zhruba po minutě, plus ručně po akcích.
+  wrapThrottle('updateAdminAlertBadge',60000);
+  wrapThrottle('updateMessageNavButton',45000);
+
+  // Aktualizace se po otevření stránky nemají tahat několikrát po sobě.
+  wrapThrottle('loadUpdates',30000);
 })();
 </script>
 
